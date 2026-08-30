@@ -1,0 +1,421 @@
+<title>שיעור 01 · החלטה לפני פרומפט</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Suez+One&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F1F2F4;
+    --surface:#FFFFFF;
+    --ink:#14181E;
+    --muted:#5B6672;
+    --faint:#8B95A1;
+    --rule:#DAdfE5;
+    --rule-strong:#BFC7D0;
+    --tally:#C93B22;
+    --tally-soft:rgba(201,59,34,.10);
+    --slate:#1A1F26;
+    --slate-ink:#F1F2F4;
+    --shadow:0 1px 2px rgba(20,24,30,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0F1317;
+      --surface:#161B21;
+      --ink:#E9ECF0;
+      --muted:#94A0AD;
+      --faint:#6E7A87;
+      --rule:#242B33;
+      --rule-strong:#333C46;
+      --tally:#FF6B4A;
+      --tally-soft:rgba(255,107,74,.12);
+      --slate:#080B0E;
+      --slate-ink:#E9ECF0;
+      --shadow:0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0F1317;
+    --surface:#161B21;
+    --ink:#E9ECF0;
+    --muted:#94A0AD;
+    --faint:#6E7A87;
+    --rule:#242B33;
+    --rule-strong:#333C46;
+    --tally:#FF6B4A;
+    --tally-soft:rgba(255,107,74,.12);
+    --slate:#080B0E;
+    --slate-ink:#E9ECF0;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:"Assistant","Segoe UI",system-ui,sans-serif;
+    font-size:16.5px;
+    line-height:1.62;
+    direction:rtl;
+  }
+  .wrap{max-width:60rem;margin:0 auto;padding:0 1.5rem 6rem}
+  p{margin:0}
+
+  /* ---------- slate ---------- */
+  .slate{
+    background:var(--slate);
+    color:var(--slate-ink);
+    margin:0 -1.5rem 3.5rem;
+    padding:2.5rem 1.5rem 2rem;
+    border-bottom:3px solid var(--tally);
+  }
+  .slate-inner{max-width:57rem;margin:0 auto}
+  .eyebrow{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--tally);display:flex;align-items:center;gap:.6rem;
+  }
+  .eyebrow::before{
+    content:"";width:.5rem;height:.5rem;border-radius:50%;
+    background:var(--tally);box-shadow:0 0 0 3px var(--tally-soft);
+  }
+  h1{
+    font-family:"Suez One","Assistant",serif;
+    font-weight:400;
+    font-size:clamp(2rem,5.2vw,3.1rem);
+    line-height:1.15;
+    margin:.9rem 0 .5rem;
+    text-wrap:balance;
+  }
+  .subtitle{color:#A9B3BE;max-width:44ch;font-size:1.05rem}
+  .fields{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
+    gap:1px;background:rgba(255,255,255,.10);
+    border:1px solid rgba(255,255,255,.10);
+    margin-top:2rem;
+  }
+  .field{background:var(--slate);padding:.7rem .9rem}
+  .field dt{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;
+    color:#7E8A96;margin-bottom:.2rem;
+  }
+  .field dd{margin:0;font-weight:600;font-size:.95rem;font-variant-numeric:tabular-nums}
+
+  /* ---------- generic sections ---------- */
+  section{margin-bottom:3.25rem}
+  h2{
+    font-family:"Suez One","Assistant",serif;font-weight:400;
+    font-size:1.5rem;line-height:1.3;margin:0 0 .35rem;text-wrap:balance;
+  }
+  .sec-head{
+    display:flex;align-items:baseline;gap:.85rem;
+    border-bottom:1px solid var(--rule-strong);
+    padding-bottom:.6rem;margin-bottom:1.5rem;
+  }
+  .sec-num{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.75rem;color:var(--tally);letter-spacing:.1em;
+    padding-top:.15rem;
+  }
+  .lede{color:var(--muted);max-width:66ch;margin-bottom:1.25rem}
+
+  /* ---------- outcomes ---------- */
+  .outcomes{list-style:none;padding:0;margin:0;display:grid;gap:.9rem}
+  .outcomes li{
+    display:grid;grid-template-columns:1.6rem 1fr;gap:.75rem;align-items:start;
+    max-width:66ch;
+  }
+  .outcomes li::before{
+    content:"";width:1.1rem;height:1.1rem;margin-top:.42rem;
+    border:1.5px solid var(--tally);border-radius:2px;
+  }
+
+  /* ---------- beats / timeline ---------- */
+  .beats{display:grid}
+  .beat{
+    display:grid;grid-template-columns:5rem 1fr;gap:1.6rem;
+    padding:1.6rem 0;border-top:1px solid var(--rule);
+  }
+  .beat:first-child{border-top:1px solid var(--rule-strong)}
+  .beat:last-child{border-bottom:1px solid var(--rule-strong)}
+  .tc{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    direction:ltr;text-align:left;
+    display:flex;flex-direction:column;gap:.15rem;
+    padding-top:.15rem;
+  }
+  .tc .t{font-size:.95rem;font-weight:500;font-variant-numeric:tabular-nums}
+  .tc .len{font-size:.72rem;color:var(--faint)}
+  .beat h3{
+    font-size:1.12rem;font-weight:700;margin:0 0 .55rem;line-height:1.35;
+  }
+  .beat h3 .kind{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--tally);background:var(--tally-soft);
+    padding:.15rem .45rem;border-radius:2px;margin-inline-start:.5rem;
+    vertical-align:.15em;font-weight:400;
+  }
+  .vo{max-width:64ch}
+  .vo em{font-style:normal;box-shadow:inset 0 -.45em 0 var(--tally-soft)}
+  .dirs{display:grid;gap:.75rem;margin-top:1rem}
+  .dir{
+    display:grid;grid-template-columns:6.2rem 1fr;gap:.9rem;
+    align-items:start;font-size:.92rem;color:var(--muted);
+  }
+  .lbl{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.66rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--faint);padding-top:.32rem;
+    border-top:1px solid var(--rule);
+  }
+  .dir p{max-width:58ch}
+
+  /* ---------- callout / formula ---------- */
+  .formula{
+    background:var(--surface);border:1px solid var(--rule);
+    border-inline-start:3px solid var(--tally);
+    padding:1.1rem 1.25rem;margin:1.1rem 0;box-shadow:var(--shadow);
+    max-width:64ch;
+  }
+  .formula .lbl{border:0;padding:0;margin-bottom:.4rem;display:block}
+  .formula p{font-size:1.02rem}
+  .formula .slot{color:var(--tally);font-weight:600}
+
+  /* ---------- table ---------- */
+  .table-scroll{overflow-x:auto;margin:1.25rem 0;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;min-width:30rem;font-size:.94rem}
+  th,td{text-align:start;padding:.55rem .8rem;border-bottom:1px solid var(--rule)}
+  thead th{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);border-bottom:1px solid var(--rule-strong);font-weight:400;
+  }
+  td.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;direction:ltr;text-align:start}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule-strong);font-weight:700}
+
+  /* ---------- asset list ---------- */
+  .assets{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .asset{
+    background:var(--surface);padding:.8rem 1rem;
+    display:grid;grid-template-columns:3.4rem 1fr auto;gap:1rem;align-items:baseline;
+  }
+  .asset .id{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.78rem;color:var(--tally);direction:ltr;text-align:start;
+  }
+  .asset .how{font-size:.82rem;color:var(--faint);white-space:nowrap}
+
+  /* ---------- gate ---------- */
+  .gate{
+    border:1.5px solid var(--tally);background:var(--surface);
+    padding:1.5rem 1.5rem 1.35rem;box-shadow:var(--shadow);
+  }
+  .gate h2{margin-bottom:.75rem}
+  .gate ol{margin:.9rem 0 0;padding-inline-start:1.2rem;display:grid;gap:.5rem;max-width:60ch}
+  .gate .note{margin-top:1.1rem;font-size:.92rem;color:var(--muted);max-width:62ch}
+
+  .foot{
+    margin-top:3.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);
+    font-size:.88rem;color:var(--faint);
+  }
+
+  a{color:var(--tally)}
+  :focus-visible{outline:2px solid var(--tally);outline-offset:3px}
+  @media (prefers-reduced-motion:no-preference){
+    .beat{scroll-margin-top:2rem}
+  }
+  @media (max-width:640px){
+    .beat{grid-template-columns:1fr;gap:.7rem}
+    .tc{flex-direction:row;align-items:baseline;gap:.6rem}
+    .dir{grid-template-columns:1fr;gap:.25rem}
+    .lbl{border-top:0;padding-top:0}
+    .asset{grid-template-columns:2.8rem 1fr;}
+    .asset .how{grid-column:2;white-space:normal}
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="slate">
+    <div class="slate-inner">
+      <div class="eyebrow">קורס פרסום AI · שיעור 01 מתוך 20</div>
+      <h1>החלטה לפני פרומפט</h1>
+      <p class="subtitle">איך חושבים ויוצרים פרסומת AI מקצועית — חבילת הפקה מלאה לסרטון השיעור.</p>
+      <dl class="fields">
+        <div class="field"><dt>משך</dt><dd>09:00</dd></div>
+        <div class="field"><dt>פורמט</dt><dd>16:9 · 1080p</dd></div>
+        <div class="field"><dt>שפה</dt><dd>עברית</dd></div>
+        <div class="field"><dt>ביטים</dt><dd>8</dd></div>
+        <div class="field"><dt>נכסים</dt><dd>10</dd></div>
+        <div class="field"><dt>מצב</dt><dd>מוכן להקלטה</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">A</span><h2>מה הצופה יודע לעשות בסוף</h2></div>
+    <p class="lede">כל שיעור נמדד ביכולת, לא בידע. אלה שלוש היכולות שהסרטון הזה חייב להשאיר אחריו.</p>
+    <ul class="outcomes">
+      <li>לכתוב בריף בשורה אחת למוצר אמיתי — קהל, כאב, הבטחה, הוכחה.</li>
+      <li>לזהות אם יש רעיון גדול או רק ויזואל יפה, במבחן אחד של חמש שניות.</li>
+      <li>לפרק פרסומת של 30 שניות לחמישה תפקידים ולתקצב לכל אחד שניות.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">B</span><h2>תסריט הסרטון</h2></div>
+    <p class="lede">ה־VO כתוב לקריאה בקול — משפטים קצרים, בלי סעיפי משנה. הטקסט המודגש הוא המשפט שחייב לשרוד גם אם הכל סביבו ייחתך בעריכה.</p>
+
+    <div class="beats">
+
+      <article class="beat">
+        <div class="tc"><span class="t">00:00</span><span class="len">18s</span></div>
+        <div class="body">
+          <h3>שני סרטונים, אותו כלי<span class="kind">Cold open</span></h3>
+          <p class="vo">שני הסרטונים האלה נוצרו באותו כלי, באותו יום, על ידי אותו אדם. הראשון אסף שמונה מאות אלף צפיות. השני מכר מוצר. <em>ההבדל ביניהם לא נמצא בפרומפט — הוא נמצא בהחלטה שקדמה לפרומפט.</em></p>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>אין טקסט. נותנים לשני הסרטונים לדבר.</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>Split screen. משמאל קליפ AI מרהיב אך חסר מוצר; מימין פרסומת אמיתית פשוטה. בשנייה 14 מסך שמאל מתעמעם ל‑20% והימני נשאר.</p></div>
+            <div class="dir"><span class="lbl">אודיו</span><p>בלי מוזיקה עד 00:14. תו בס נכנס על המשפט האחרון.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">00:18</span><span class="len">27s</span></div>
+        <div class="body">
+          <h3>מה נלמד ולמה דווקא עכשיו<span class="kind">הבטחה</span></h3>
+          <p class="vo">שלוש שנים הבעיה של פרסומת הייתה איך מצלמים אותה. היום כל אחד מייצר שוט קולנועי בשלושים שניות ובאפס תקציב. וברגע שהביצוע נהיה חינם, <em>הדבר היחיד שנשאר יקר הוא ההחלטה מה בכלל להראות.</em> בשיעור הזה אנחנו בונים את שכבת ההחלטה. בלי כלים, בלי פרומפטים — אלה מגיעים בשיעור השני, ורק אחרי שיהיה לך מה להגיד.</p>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>„שכבת ההחלטה” — טייטל־קארד יחיד, מופיע ונעלם.</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>Talking head, קלוז‑אפ בינוני. B‑roll קצר של גלילה מהירה בין עשרות קליפי AI דומים.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">00:45</span><span class="len">85s</span></div>
+        <div class="body">
+          <h3>ארבע השאלות שקודמות לכל שורת פרומפט<span class="kind">פרק 1</span></h3>
+          <p class="vo">לפני שאתה נוגע בכלי, ארבע שאלות. למי אני מדבר — לא „לכולם”, לאדם אחד שאתה יכול לתאר. מה כואב לו עכשיו, לפני שהוא פגש אותי. מה אני מבטיח לו — הבטחה אחת, לא שלוש. ומה הוא עושה בשנייה שהסרטון נגמר. <em>אם אין לך תשובה לארבע האלה, אתה לא מפיק פרסומת — אתה מייצר תמונות.</em> ומכאן נולד הבריף בשורה אחת, וזה כל הבריף שאתה צריך.</p>
+          <div class="formula">
+            <span class="lbl">בריף בשורה אחת</span>
+            <p>עבור <span class="slot">[קהל]</span> שסובל מ<span class="slot">[כאב]</span>, <span class="slot">[מותג]</span> הוא ה<span class="slot">[קטגוריה]</span> ש<span class="slot">[הבטחה יחידה]</span>, כי <span class="slot">[הוכחה]</span>.</p>
+          </div>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>ארבע השאלות נבנות אחת־אחת, כל אחת נשארת. אחר כך הנוסחה מתמלאת בזמן אמת בדוגמה של מותג קפה.</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>מסך מלא של הנוסחה על רקע נקי. הקלטת מסך של הקלדה — לא אנימציית טקסט מוכנה.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">02:10</span><span class="len">90s</span></div>
+        <div class="body">
+          <h3>הרעיון הגדול, ומבחן חמש השניות<span class="kind">פרק 2</span></h3>
+          <p class="vo">רעיון גדול הוא לא סגנון ויזואלי, והוא לא רשימת שוטים יפים. הוא משפט אחד שאפשר לספר בטלפון למישהו שלא ראה את הסרטון, והוא מבין. ויש לו מבחן אחד: <em>תוציא את המוצר מהפריים — אם עדיין נשאר סרטון מעניין, אין לך פרסומת, יש לך אמנות.</em> ואם תחליף את הלוגו במתחרה והכל עדיין עובד — הרעיון לא שלך, הוא של הקטגוריה.</p>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>„מוציאים את המוצר → עדיין מעניין? → זו לא פרסומת”</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>לוקחים את פרסומת הקטגוריה שהפקנו למותג 18 (A‑04), מוחקים ממנה את המוצר, ואז מחליפים את הסימן ל‑NOVA. שתי ההדגמות בפועל, לא בהסבר.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">03:40</span><span class="len">90s</span></div>
+        <div class="body">
+          <h3>אנטומיה של שלושים שניות<span class="kind">פרק 3</span></h3>
+          <p class="vo">לפרסומת יש חמישה תפקידים, ולכל תפקיד יש תקציב שניות. הוק — לעצור את האגודל. מתח — להזכיר לו את הכאב. הבטחה — מה משתנה. הוכחה — למה להאמין. וקריאה לפעולה. <em>אם ההוק שלך לוקח שמונה שניות, אין פרסומת — אין מי שיראה את השאר.</em> תקצב לפני שאתה מייצר שוט אחד.</p>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>תפקיד</th><th>שניות</th><th>מה חייב לקרות</th></tr></thead>
+              <tbody>
+                <tr><td>הוק</td><td class="num">0–3</td><td>תנועה, פנים או שבירת ציפייה</td></tr>
+                <tr><td>מתח</td><td class="num">3–10</td><td>הכאב מוצג, לא מוסבר</td></tr>
+                <tr><td>הבטחה</td><td class="num">10–18</td><td>המוצר נכנס כפתרון</td></tr>
+                <tr><td>הוכחה</td><td class="num">18–26</td><td>הדגמה, מספר או פנים אמיתיות</td></tr>
+                <tr><td>קריאה לפעולה</td><td class="num">26–30</td><td>פעולה אחת, מילים ספורות</td></tr>
+                <tr><td>סה״כ</td><td class="num">30</td><td>שוט אחד לכל מטרה</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">ויזואל</span><p>ציר זמן של עריכה שנצבע לחמישה מקטעים בזמן שהוא מדובר. הקלטת מסך מהטיימליין האמיתי.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">05:10</span><span class="len">80s</span></div>
+        <div class="body">
+          <h3>ארבעה סימנים שזו פרסומת חובבנית<span class="kind">פרק 4</span></h3>
+          <p class="vo">אחד — שוטים שלא מדברים ביניהם: כל שוט יפה, ואין ביניהם סיבה. שתיים — דמות שמשתנה בין שוט לשוט, וברגע שהצופה מרגיש את זה הוא מפסיק להאמין. שלוש — מוצר שמתנהג נגד הפיזיקה: נוזל שנשפך לא נכון, אריזה שמשנה פרופורציה. ארבע — יותר מדי תנועת מצלמה, כי הכלי יודע לעשות את זה בחינם. <em>הכלל שמחסל את כל הארבעה: מטרה אחת לכל שוט, ואם אין לשוט תפקיד — הוא לא נכנס.</em></p>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>מונים 01–04 נכנסים עם כל סימן ונשארים ברשימה בצד.</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>לכל סימן קליפ AI קצר שמדגים אותו בפועל, עם עיגול אדום על הבעיה. את הסימן השני מראים בהקפאה של שני פריימים זה לצד זה.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">06:30</span><span class="len">70s</span></div>
+        <div class="body">
+          <h3>דף האילוצים<span class="kind">פרק 5</span></h3>
+          <p class="vo">מקצוען לא מתחיל מדף חלק, הוא מתחיל מדף אילוצים. פלטפורמה ויחס תמונה. אורך מדויק. שפה ומשלב. קול המותג בשלוש מילים. ומה אסור — צבעים, אמירות, טון. <em>האילוצים הם לא מה שמגביל את הקריאייטיב, הם מה שהופך אותו לניתן לביצוע.</em> דף האילוצים הוא המסמך היחיד שנשאר פתוח לידך לאורך כל ההפקה.</p>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>דף האילוצים כטופס שמתמלא שדה־שדה.</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>מסמך אמיתי על המסך. מסיימים בגרסה מלאה של אותו מותג קפה מפרק 1.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="beat">
+        <div class="tc"><span class="t">07:40</span><span class="len">80s</span></div>
+        <div class="body">
+          <h3>התרגיל, והשער לשיעור הבא<span class="kind">סיום</span></h3>
+          <p class="vo">בחר מוצר אמיתי — משהו שיש לך בבית עכשיו. כתוב לו בריף בשורה אחת. כתוב שלושה הוקים שונים באמת, לא שלוש גרסאות לאותו הוק. ובחר רעיון גדול אחד שעובר את מבחן המוצר מחוץ לפריים. <em>אל תעבור לשיעור הבא לפני שהשלושה האלה כתובים.</em> בשיעור הבא אנחנו לוקחים בדיוק את הדף הזה והופכים אותו לתסריט מצולם.</p>
+          <div class="dirs">
+            <div class="dir"><span class="lbl">על המסך</span><p>שלושת תנאי השער כרשימה, ומתחתיה „שיעור 02 — Brief ← רעיון ← Hook ← תסריט”.</p></div>
+            <div class="dir"><span class="lbl">ויזואל</span><p>חזרה ל‑talking head. קאט לשחור על המשפט האחרון, בלי אאוטרו מוזיקלי ארוך.</p></div>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">C</span><h2>רשימת נכסים להפקה</h2></div>
+    <p class="lede">מה צריך להיות מוכן לפני יום ההקלטה, ובאיזו דרך מפיקים כל פריט. כל פרסומת שמופיעה על המסך נבנית ממותג הדגמה שלנו (A‑00) ולא נלקחת ממותג אמיתי — כך אפשר גם לייצר בכוונה את הגרסה הגרועה.</p>
+    <div class="assets">
+      <div class="asset"><span class="id">A‑00</span><span>ערכת המותג 18 — מותג הדגמה בדיוני שממנו נבנות כל הפרסומות שעל המסך</span><span class="how">מסמך</span></div>
+      <div class="asset"><span class="id">A‑01</span><span>שתי גרסאות פתיח לאותו מותג: „יפה וריק” מול „מוכר”</span><span class="how">ייצור AI</span></div>
+      <div class="asset"><span class="id">A‑02</span><span>גלילה מהירה בין קליפי AI דומים זה לזה</span><span class="how">הקלטת מסך</span></div>
+      <div class="asset"><span class="id">A‑03</span><span>הקלדה חיה של הבריף בשורה אחת למותג הדוגמה</span><span class="how">הקלטת מסך</span></div>
+      <div class="asset"><span class="id">A‑04</span><span>פרסומת הקטגוריה של 18, ושתי גרסאות המבחן: בלי המוצר, ועם הסימן של המתחרה</span><span class="how">ייצור + עריכה</span></div>
+      <div class="asset"><span class="id">A‑05</span><span>טיימליין 30 שניות צבוע בחמישה מקטעים</span><span class="how">הקלטת מסך</span></div>
+      <div class="asset"><span class="id">A‑06</span><span>ארבעה קליפים קצרים שמדגימים כל אחד מסימני החובבנות</span><span class="how">ייצור AI</span></div>
+      <div class="asset"><span class="id">A‑07</span><span>שני פריימים של אותה דמות שאינה עקבית, זה לצד זה</span><span class="how">ייצור AI</span></div>
+      <div class="asset"><span class="id">A‑08</span><span>דף האילוצים כטופס ריק וכטופס מלא</span><span class="how">עיצוב</span></div>
+      <div class="asset"><span class="id">A‑09</span><span>טייטל־קארדים: „שכבת ההחלטה”, מונים 01–04, שער לשיעור 02</span><span class="how">עיצוב</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">D</span><h2>שער שיעור 01</h2></div>
+    <div class="gate">
+      <h2>מה חייב להיות בידך כדי לעבור</h2>
+      <p>השער נבדק על מוצר אחד אמיתי, לא על דוגמה תיאורטית.</p>
+      <ol>
+        <li>בריף בשורה אחת, מלא בכל חמשת השדות.</li>
+        <li>שלושה הוקים שונים בזווית, לא בניסוח.</li>
+        <li>רעיון גדול אחד שעובר את מבחן המוצר מחוץ לפריים ואת מבחן החלפת הלוגו.</li>
+      </ol>
+      <p class="note">אם ההוק השלישי נשמע כמו ניסוח אחר של הראשון — זה סימן שיש רעיון אחד ולא שלושה, וזה בסדר בשלב הזה, אבל השער עוד לא נפתח.</p>
+    </div>
+  </section>
+
+  <p class="foot">חבילת הפקה לשיעור 01. המבנה חוזר בכל אחד מעשרים השיעורים: תוצרים ← תסריט מתוזמן ← נכסים ← שער.</p>
+
+</div>

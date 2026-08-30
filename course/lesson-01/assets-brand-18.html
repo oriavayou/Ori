@@ -1,0 +1,341 @@
+<title>ערכת המותג 18</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Suez+One&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F1F2F4; --surface:#FFFFFF; --ink:#14181E; --muted:#5B6672;
+    --faint:#8B95A1; --rule:#DADFE5; --rule-strong:#BFC7D0;
+    --tally:#C93B22; --tally-soft:rgba(201,59,34,.10);
+    --slate:#1A1F26; --slate-ink:#F1F2F4;
+    --code-bg:#151A20; --code-ink:#DDE3EA; --code-rule:#2A323B;
+    --shadow:0 1px 2px rgba(20,24,30,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0F1317; --surface:#161B21; --ink:#E9ECF0; --muted:#94A0AD;
+      --faint:#6E7A87; --rule:#242B33; --rule-strong:#333C46;
+      --tally:#FF6B4A; --tally-soft:rgba(255,107,74,.12);
+      --slate:#080B0E; --slate-ink:#E9ECF0;
+      --code-bg:#0A0D11; --code-ink:#D3DAE2; --code-rule:#222A32;
+      --shadow:0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0F1317; --surface:#161B21; --ink:#E9ECF0; --muted:#94A0AD;
+    --faint:#6E7A87; --rule:#242B33; --rule-strong:#333C46;
+    --tally:#FF6B4A; --tally-soft:rgba(255,107,74,.12);
+    --slate:#080B0E; --slate-ink:#E9ECF0;
+    --code-bg:#0A0D11; --code-ink:#D3DAE2; --code-rule:#222A32;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:"Assistant","Segoe UI",system-ui,sans-serif;
+    font-size:16.5px; line-height:1.62; direction:rtl;
+  }
+  .wrap{max-width:60rem;margin:0 auto;padding:0 1.5rem 6rem}
+  p{margin:0}
+
+  .slate{
+    background:var(--slate); color:var(--slate-ink);
+    margin:0 -1.5rem 3.5rem; padding:2.5rem 1.5rem 2rem;
+    border-bottom:3px solid var(--tally);
+  }
+  .slate-inner{max-width:57rem;margin:0 auto}
+  .eyebrow{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--tally);display:flex;align-items:center;gap:.6rem;
+  }
+  .eyebrow::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:var(--tally);box-shadow:0 0 0 3px var(--tally-soft)}
+  h1{font-family:"Suez One","Assistant",serif;font-weight:400;font-size:clamp(2rem,5.2vw,3.1rem);line-height:1.15;margin:.9rem 0 .5rem;text-wrap:balance}
+  .subtitle{color:#A9B3BE;max-width:46ch;font-size:1.05rem}
+
+  section{margin-bottom:3.25rem}
+  h2{font-family:"Suez One","Assistant",serif;font-weight:400;font-size:1.5rem;line-height:1.3;margin:0 0 .35rem;text-wrap:balance}
+  .sec-head{display:flex;align-items:baseline;gap:.85rem;border-bottom:1px solid var(--rule-strong);padding-bottom:.6rem;margin-bottom:1.5rem}
+  .sec-num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.75rem;color:var(--tally);letter-spacing:.1em;padding-top:.15rem}
+  .lede{color:var(--muted);max-width:66ch;margin-bottom:1.25rem}
+
+  /* brand bible */
+  .bible{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .row{background:var(--surface);display:grid;grid-template-columns:8rem 1fr;gap:1rem;padding:.7rem 1rem;align-items:baseline}
+  .row dt{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.68rem;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+  .row dd{margin:0;max-width:60ch}
+  .brief{
+    background:var(--surface);border:1px solid var(--rule);
+    border-inline-start:3px solid var(--tally);
+    padding:1.1rem 1.25rem;margin-top:1.25rem;box-shadow:var(--shadow);max-width:64ch;
+  }
+  .brief .lbl{display:block;margin-bottom:.4rem}
+  .brief p{font-size:1.05rem;line-height:1.55}
+
+  .lbl{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.66rem;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+
+  /* assets */
+  .asset{border-top:1px solid var(--rule);padding:1.9rem 0}
+  .asset:first-of-type{border-top:1px solid var(--rule-strong)}
+  .asset:last-of-type{border-bottom:1px solid var(--rule-strong)}
+  .asset-head{display:grid;grid-template-columns:4.2rem 1fr;gap:1.2rem;align-items:baseline}
+  .id{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.85rem;color:var(--tally);direction:ltr;text-align:start;font-weight:500}
+  .asset h3{font-size:1.12rem;font-weight:700;margin:0 0 .35rem;line-height:1.35}
+  .role{color:var(--muted);max-width:62ch;font-size:.96rem}
+  .asset-body{margin-top:1.1rem;margin-inline-start:5.4rem}
+  @media (max-width:640px){.asset-body{margin-inline-start:0}.asset-head{grid-template-columns:1fr;gap:.3rem}}
+
+  .spec{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem}
+  .chip{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.7rem;
+    letter-spacing:.06em;color:var(--muted);background:var(--surface);
+    border:1px solid var(--rule);padding:.2rem .5rem;border-radius:2px;
+    direction:ltr;
+  }
+
+  .prompt{margin:.9rem 0}
+  .prompt-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.3rem}
+  .prompt-head .lbl{color:var(--faint)}
+  .copy{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.66rem;
+    letter-spacing:.09em;text-transform:uppercase;
+    background:none;border:1px solid var(--rule-strong);color:var(--muted);
+    padding:.18rem .5rem;border-radius:2px;cursor:pointer;
+  }
+  .copy:hover{border-color:var(--tally);color:var(--tally)}
+  pre{
+    margin:0;background:var(--code-bg);color:var(--code-ink);
+    border:1px solid var(--code-rule);border-radius:3px;
+    padding:.85rem 1rem;overflow-x:auto;
+    direction:ltr;text-align:left;
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+  }
+  .check{
+    display:grid;grid-template-columns:auto 1fr;gap:.7rem;align-items:start;
+    margin-top:1rem;font-size:.92rem;color:var(--muted);max-width:62ch;
+  }
+  .check::before{content:"";width:.95rem;height:.95rem;margin-top:.32rem;border:1.5px solid var(--tally);border-radius:2px}
+
+  .steps{list-style:none;counter-reset:s;padding:0;margin:0;display:grid;gap:.8rem}
+  .steps li{counter-increment:s;display:grid;grid-template-columns:2rem 1fr;gap:.8rem;max-width:64ch}
+  .steps li::before{
+    content:counter(s,decimal-leading-zero);
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.78rem;color:var(--tally);padding-top:.2rem;
+  }
+  .warn{
+    background:var(--tally-soft);border:1px solid var(--tally);
+    padding:1rem 1.15rem;margin-top:1.5rem;max-width:64ch;font-size:.95rem;
+  }
+  .foot{margin-top:3.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.88rem;color:var(--faint)}
+  :focus-visible{outline:2px solid var(--tally);outline-offset:3px}
+</style>
+
+<div class="wrap">
+
+  <header class="slate">
+    <div class="slate-inner">
+      <div class="eyebrow">שיעור 01 · נכסי מסך</div>
+      <h1>ערכת המותג 18</h1>
+      <p class="subtitle">מותג הדגמה בדיוני שכל הפרסומות שעל המסך בקורס נבנות ממנו — כולל הפרסומות הגרועות בכוונה.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">למה</span><h2>מותג אחד לכל עשרים השיעורים</h2></div>
+    <p class="lede">כל פרסומת שמופיעה על המסך בשיעור נבנית מהמותג הזה, ולא נלקחת ממותג אמיתי. שלוש סיבות מעשיות: אנחנו הבעלים של כל פריים ואפשר לפרסם את הקורס בלי בעיה משפטית; אפשר לייצר בכוונה את הגרסה הגרועה, מה שאי אפשר לעשות עם פרסומת של מישהו אחר; והצופה רואה את אותו מוצר מתפתח לאורך הקורס, אז כל שיעור מוסיף שכבה במקום להתחיל מאפס.</p>
+
+    <dl class="bible">
+      <div class="row"><dt>מותג</dt><dd>18 — הסימן הוא הספרה בלבד</dd></div>
+      <div class="row"><dt>קטגוריה</dt><dd>תרכיז קולד ברו</dd></div>
+      <div class="row"><dt>מוצר</dt><dd>בקבוק זכוכית כהה 250 מ״ל, תווית מינימלית, ללא צבע חם</dd></div>
+      <div class="row"><dt>קהל</dt><dd>עובדי מסך בני 28–40 שעובדים מהבית, שלוש כוסות ביום ומעלה</dd></div>
+      <div class="row"><dt>כאב</dt><dd>קפה טוב לוקח שש דקות, ואת השש האלה אין</dd></div>
+      <div class="row"><dt>הבטחה</dt><dd>כוס של בית קפה בעשר שניות, בלי מכונה</dd></div>
+      <div class="row"><dt>הוכחה</dt><dd>חליטה קרה של שמונה עשרה שעות — משם השם</dd></div>
+      <div class="row"><dt>קול</dt><dd>מדויק · שקט · בוגר</dd></div>
+      <div class="row"><dt>אסור</dt><dd>קצף וציור בחלב, כתום־חום קלישאתי, המילה „מהפכה”, אנשים שצוחקים בלי סיבה</dd></div>
+      <div class="row"><dt>מתחרה</dt><dd>NOVA — קיים רק בשביל מבחן החלפת הלוגו</dd></div>
+    </dl>
+
+    <div class="brief">
+      <span class="lbl">הבריף בשורה אחת — הדוגמה שמופיעה בשיעור</span>
+      <p>עבור עובדי מסך שאין להם שש דקות לקפה, 18 הוא תרכיז הקולד ברו שנותן כוס בית־קפה בעשר שניות, כי הוא נחלט קר במשך שמונה עשרה שעות.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">A</span><h2>הנכסים, אחד אחד</h2></div>
+    <p class="lede">הפרומפטים באנגלית בכוונה — מנועי התמונה והווידאו מדויקים בהרבה באנגלית. טקסט עברי לעולם לא נוצר בתוך המנוע אלא נוסף בעריכה; זו הסיבה שהסימן של המותג הוא ספרה.</p>
+
+    <article class="asset">
+      <div class="asset-head">
+        <span class="id">A‑01a</span>
+        <div>
+          <h3>„יפה וריק” — חצי הפתיח שאוסף צפיות</h3>
+          <p class="role">הקליפ שנראה מדהים ולא מוכר כלום. חייב להיות באמת יפה, אחרת ההשוואה בפתיח לא עובדת.</p>
+        </div>
+      </div>
+      <div class="asset-body">
+        <div class="spec"><span class="chip">15s</span><span class="chip">16:9</span><span class="chip">3 shots</span><span class="chip">no product</span></div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Keyframe · image</span><button class="copy" type="button">העתק</button></div>
+          <pre>Extreme macro of dark coffee splashing upward against a matte black background. Single hard key light from camera left, deep falloff, droplets frozen mid-air. 100mm macro, f/4, high contrast, photoreal, cinematic. No product, no packaging, no text.</pre>
+        </div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Motion · image to video</span><button class="copy" type="button">העתק</button></div>
+          <pre>The liquid rises and falls in slow motion, droplets scatter toward the lens. Camera locked off, no zoom, no orbit. 4 seconds.</pre>
+        </div>
+        <div class="check">אם אפשר להדביק את הקליפ הזה לכל מותג קפה בעולם בלי לשנות פריים — הוא מוכן. זו כל הפואנטה שלו.</div>
+      </div>
+    </article>
+
+    <article class="asset">
+      <div class="asset-head">
+        <span class="id">A‑01b</span>
+        <div>
+          <h3>„מוכר” — אותו מותג, החלטה אחרת</h3>
+          <p class="role">שלושה שוטים עם קו עלילתי אחד: מצב, פתרון, חזרה לעבודה. שוט 1 ושוט 3 בקומפוזיציה זהה — שם נמצא כל האפקט.</p>
+        </div>
+      </div>
+      <div class="asset-body">
+        <div class="spec"><span class="chip">20s</span><span class="chip">16:9</span><span class="chip">3 shots</span><span class="chip">same character</span></div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Shot 1 · image</span><button class="copy" type="button">העתק</button></div>
+          <pre>A person in their early thirties at a home desk at 11pm, lit only by a laptop screen and one warm desk lamp. Real, slightly cluttered room. Tired posture, low three-quarter angle. 35mm, f/2, cool screen light against warm lamp, photoreal, muted palette. No logos, no text.</pre>
+        </div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Shot 2 · image</span><button class="copy" type="button">העתק</button></div>
+          <pre>Close-up of a hand pouring dark coffee concentrate from a small dark glass bottle over a tall glass of ice. Same desk, same lamp and screen light as the previous shot. 50mm, f/2.8, shallow depth of field, condensation on the glass. The bottle label carries only the numeral 18, nothing else.</pre>
+        </div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Motion · shot 2</span><button class="copy" type="button">העתק</button></div>
+          <pre>The stream pours steadily into the glass, ice shifts once under the weight, condensation runs down. Camera static. 3 seconds.</pre>
+        </div>
+        <div class="check">שוט 3 הוא שוט 1 בדיוק — אותה זווית, אותו מרחק, אותה תאורה — רק שהגב זקוף והכוס ליד המחשב. אם הקומפוזיציה לא זהה, האפקט מת.</div>
+      </div>
+    </article>
+
+    <article class="asset">
+      <div class="asset-head">
+        <span class="id">A‑04</span>
+        <div>
+          <h3>פרסומת הקטגוריה — הגרועה שנראית טוב</h3>
+          <p class="role">מיוצרת בכוונה כך שתיפול בשני המבחנים של פרק 2. עליה מדגימים את הסרת המוצר ואת החלפת הלוגו, ולכן היא חייבת להיות שלנו.</p>
+        </div>
+      </div>
+      <div class="asset-body">
+        <div class="spec"><span class="chip">12s</span><span class="chip">16:9</span><span class="chip">2 shots + endcard</span></div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Keyframe · image</span><button class="copy" type="button">העתק</button></div>
+          <pre>Golden morning light through a window onto a rustic wooden table, steam rising from a ceramic mug, two hands cradling it, soft focus greenery in the background. 85mm, f/1.8, warm grade, lifestyle stock aesthetic, photoreal.</pre>
+        </div>
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">Motion</span><button class="copy" type="button">העתק</button></div>
+          <pre>Steam drifts slowly, a slight breeze moves the background leaves, gentle push-in. 4 seconds.</pre>
+        </div>
+        <p class="role" style="margin-top:1rem">שתי גרסאות המבחן נעשות בעריכה, לא בייצור:</p>
+        <ul class="steps" style="margin-top:.7rem">
+          <li><strong>A‑04a</strong> — אותו קליפ בלי הבקבוק בפריים הסוגר. עדיין יפה, ועדיין לא אומר כלום.</li>
+          <li><strong>A‑04b</strong> — אותו קליפ עם הסימן NOVA במקום 18. עובד בדיוק אותו דבר, ולכן הרעיון לא שייך לאף אחד.</li>
+        </ul>
+        <div class="check">אם מישהו בצוות אומר „זו בעצם פרסומת יפה” — הצלחנו. היא אמורה להיות מפתה עד שמריצים עליה את המבחן.</div>
+      </div>
+    </article>
+
+    <article class="asset">
+      <div class="asset-head">
+        <span class="id">A‑06</span>
+        <div>
+          <h3>ארבעת סימני החובבנות</h3>
+          <p class="role">ארבעה קליפים של ארבע שניות, כל אחד מדגים כשל אחד. אלה הפרומפטים היחידים בקורס שכתובים גרוע בכוונה.</p>
+        </div>
+      </div>
+      <div class="asset-body">
+        <div class="spec"><span class="chip">4 × 4s</span><span class="chip">16:9</span></div>
+
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">01 · שוטים שלא מדברים ביניהם</span><button class="copy" type="button">העתק</button></div>
+          <pre>Generate three unrelated cinematic shots and cut them together with no connective logic:
+1) A lone figure on a desert dune at sunset, wide, anamorphic.
+2) A neon-lit rainy street in a dense city at night, handheld.
+3) Macro of coffee crema swirling in a cup.
+Each beautiful, none sharing subject, location, palette or time of day.</pre>
+        </div>
+
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">02 · דמות שמשתנה</span><button class="copy" type="button">העתק</button></div>
+          <pre>Run this prompt twice as two separate generations, with no reference image and no seed lock — the drift is the demonstration:
+"A woman in her thirties with short dark hair and a grey sweater sits at a kitchen table holding a glass of iced coffee, natural window light, 50mm, photoreal."</pre>
+        </div>
+
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">03 · פיזיקה שגויה</span><button class="copy" type="button">העתק</button></div>
+          <pre>Coffee pours from a bottle and the stream splits into two mid-air before reaching the glass. Ice cubes hover slightly above the rim. The bottle is noticeably taller in the second half of the shot than in the first. Photoreal lighting throughout.</pre>
+        </div>
+
+        <div class="prompt">
+          <div class="prompt-head"><span class="lbl">04 · יותר מדי מצלמה</span><button class="copy" type="button">העתק</button></div>
+          <pre>A glass of iced coffee on a desk. In four seconds the camera orbits 180 degrees, dollies in hard, cranes upward and racks focus twice. Constant motion, never settles.</pre>
+        </div>
+
+        <div class="check">כל קליפ חייב להיות ברור בלי הסבר. אם צריך לומר בקריינות מה הבעיה — הוא לא מספיק גרוע.</div>
+      </div>
+    </article>
+
+    <article class="asset">
+      <div class="asset-head">
+        <span class="id">A‑07</span>
+        <div>
+          <h3>שני פריימים של אותה דמות</h3>
+          <p class="role">לא מייצרים מחדש — לוקחים שני פריימים מתוך A‑06/02 ומציגים זה לצד זה בהקפאה.</p>
+        </div>
+      </div>
+      <div class="asset-body">
+        <div class="spec"><span class="chip">stills</span><span class="chip">split screen</span><span class="chip">from A‑06/02</span></div>
+        <div class="check">בוחרים את שני הפריימים שבהם ההיסט הכי קריא בפנים — לא בבגד ולא ברקע.</div>
+      </div>
+    </article>
+
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">B</span><h2>סדר בנייה</h2></div>
+    <p class="lede">כל השוטים נבנים בשני צעדים: קודם keyframe כתמונה, ורק אחריו הנפשה מהתמונה. טקסט לווידאו ישירות נותן פחות שליטה ומייצר את בדיוק הכשלים שאנחנו מלמדים לזהות.</p>
+    <ol class="steps">
+      <li>מייצרים את כל ה‑keyframes כתמונות, כולל הכושלים בכוונה. שומרים גם את הפסולים — הם חומר הוראה.</li>
+      <li>מנפישים כל keyframe לקליפ קצר. שוט אחד, מטרה אחת, בלי תנועת מצלמה מיותרת.</li>
+      <li>גרסאות המבחן של A‑04 נעשות בעריכה בלבד: מסירים את המוצר, ומחליפים את הסימן ל‑NOVA.</li>
+      <li>כל הטקסט העברי — טייטל־קארדים, מונים, שער — נוסף בעריכה. שום מילה בעברית לא עוברת דרך מנוע התמונה.</li>
+    </ol>
+    <div class="warn">
+      <strong>הריפו שאנחנו יושבים בו מייצר בדיוק את השלב הראשון.</strong> Nano‑Banana MCP הוא שרת ייצור תמונות דרך Gemini — אם תחבר אותו כ‑MCP, כל ה‑keyframes ברשימה הזאת נוצרים ישירות מתוך שיחה, ואפשר לאטרט עליהם עד שהם נכונים לפני שנוגעים בכלי הווידאו.
+    </div>
+  </section>
+
+  <p class="foot">ערכת המותג 18 — מלווה את כל עשרים השיעורים. כל שיעור מוסיף לה נכסים ולא מחליף אותה.</p>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var pre = btn.closest(".prompt").querySelector("pre");
+      var done = function(){
+        var was = btn.textContent;
+        btn.textContent = "הועתק";
+        setTimeout(function(){ btn.textContent = was; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pre.textContent).then(done, function(){});
+      } else {
+        var r = document.createRange();
+        r.selectNodeContents(pre);
+        var s = window.getSelection();
+        s.removeAllRanges(); s.addRange(r);
+        try { document.execCommand("copy"); done(); } catch (e) {}
+      }
+    });
+  });
+</script>
