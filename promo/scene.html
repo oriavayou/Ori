@@ -118,6 +118,14 @@
   .stat .sfx{font-size:80px;font-weight:900;color:var(--c3);letter-spacing:-.03em}
   .stat .lb{font-size:38px;color:var(--muted);font-weight:500;margin-inline-start:auto}
 
+  /* points */
+  .points{display:flex;flex-direction:column;gap:44px;margin-top:24px}
+  .point{display:flex;align-items:center;gap:32px}
+  .point i{flex:0 0 auto;width:76px;height:76px;border-radius:26px;display:grid;place-items:center;
+    font-size:38px;font-style:normal;color:#0a0a12;font-weight:900;
+    background:linear-gradient(140deg,var(--c2),var(--c1))}
+  .point span{font-size:46px;font-weight:700;letter-spacing:-.025em;line-height:1.25}
+
   /* cta */
   .cta{align-items:center;text-align:center}
   .cta h2{font-size:120px;font-weight:900;letter-spacing:-.045em;line-height:1.08;margin-bottom:56px}
@@ -126,6 +134,8 @@
   .btn{font-size:52px;font-weight:800;letter-spacing:-.02em;color:#0a0a12;padding:34px 88px;border-radius:999px;
     background:linear-gradient(120deg,var(--c2),var(--c1) 60%,var(--c3))}
   .note{margin-top:44px;font-size:34px;color:var(--muted)}
+  .disclaimer{position:absolute;bottom:96px;left:96px;right:96px;text-align:center;
+    font-size:24px;line-height:1.5;color:rgba(255,255,255,.42);font-weight:400}
 </style>
 </head>
 <body>
@@ -260,6 +270,19 @@ const builders = {
     sc.appendChild(wrap);
   },
 
+  points(sc, s){
+    const t = s.start;
+    if (s.kicker) sc.appendChild(an(el('div','kicker',s.kicker),'fadeUp',.6,t));
+    const wrap = el('div','points');
+    (s.items||[]).forEach((it,i)=>{
+      const row = el('div','point');
+      row.append(el('i',null,'✓'), el('span',null,typeof it === 'string' ? it : (it.text||'')));
+      an(row,'slideR',.7,t+.25+i*.24);
+      wrap.appendChild(row);
+    });
+    sc.appendChild(wrap);
+  },
+
   cta(sc, s){
     const t = s.start;
     sc.appendChild(an(el('h2',null,s.title||''),'fadeUp',.8,t));
@@ -271,6 +294,7 @@ const builders = {
       glow.appendChild(b); sc.appendChild(glow);
     }
     if (s.note) sc.appendChild(an(el('div','note',s.note),'fadeUp',.7,t+.7));
+    if (s.disclaimer) sc.appendChild(an(el('div','disclaimer',s.disclaimer),'fadeUp',.7,t+.9));
   }
 };
 

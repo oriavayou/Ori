@@ -7,6 +7,7 @@
 ```
 promo/
   content.json        ← כל התוכן: מותג, סלוגן, סצנות, צבעים, תזמונים
+  content.example.json← תבנית ריקה להתחלה מאפס
   scene.html          ← העיצוב וההנפשה (RTL, גופן Rubik מוטמע)
   fonts.css           ← Rubik (עברית + לטינית) מוטמע כ־base64
   tools/render.mjs    ← מרנדר את הסצנה ל־MP4
@@ -57,7 +58,8 @@ FFMPEG=./node_modules/ffmpeg-static/ffmpeg node promo/tools/render.mjs
 | `hook` | `kicker`, `lines[]`, `highlight` | משפט פתיחה גדול; `highlight` מודגש בגרדיאנט |
 | `features` | `kicker`, `items[{icon,title,text}]` | כרטיסי יתרונות שנכנסים בהדרגה |
 | `stats` | `kicker`, `items[{to,suffix,label}]` | מספרים שרצים כלפי מעלה |
-| `cta` | `title`, `url`, `button`, `note` | קריאה לפעולה מסכמת |
+| `points` | `kicker`, `items[]` (מחרוזות) | רשימת נקודות עם וי — בלי מספרים |
+| `cta` | `title`, `url`, `button`, `note`, `disclaimer` | קריאה לפעולה מסכמת; `disclaimer` הוא שורת אותיות קטנות בתחתית |
 
 הסצנות מצטלבות אוטומטית (כל אחת מתחילה קצת לפני שקודמתה מסתיימת), והפס העליון
 מתמלא לאורך כל הסרטון — כך שכדאי לשמור על `end` של הסצנה האחרונה שווה ל־`meta.duration`.
