@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Site tour · render target</title>
+<link rel="stylesheet" href="../fonts.css">
+<style>
+/* =============================================================================
+   The edit. This page is a render target, not a site: it is built to be seeked
+   frame by frame (window.__seek), so every motion lives on one paused GSAP
+   master timeline and nothing depends on the wall clock.
+   ========================================================================== */
+:root{
+  --bg:#05070d; --ink:#f4f7fc; --muted:#95a2bd;
+  --blue:#3b82f6; --cyan:#43d9ff; --gold:#f0b429;
+  --line:rgba(255,255,255,.12);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#000;overflow:hidden}
+body{display:grid;place-items:center;min-height:100vh}
+.stage{
+  position:relative;width:1080px;height:1920px;overflow:hidden;background:var(--bg);color:var(--ink);
+  font-family:'Rubik',system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  perspective:1800px;
+}
+
+/* ---------- ambient ---------- */
+.blob{position:absolute;border-radius:50%;filter:blur(110px);will-change:transform}
+.b1{width:1000px;height:1000px;top:-260px;right:-240px;background:rgba(59,130,246,.42)}
+.b2{width:860px;height:860px;bottom:-220px;left:-240px;background:rgba(67,217,255,.22)}
+.b3{width:720px;height:720px;top:46%;left:32%;background:rgba(240,180,41,.20)}
+.vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 42%,transparent 42%,rgba(0,0,0,.72) 100%)}
+.grain{position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* ---------- chrome ---------- */
+.bar{position:absolute;top:0;left:0;right:0;height:7px;background:rgba(255,255,255,.08);z-index:60}
+.bar i{display:block;height:100%;transform:scaleX(0);transform-origin:right center;
+  background:linear-gradient(90deg,var(--cyan),var(--blue) 55%,var(--gold))}
+.chip{position:absolute;bottom:56px;right:64px;z-index:55;display:flex;align-items:center;gap:14px;
+  padding:14px 26px;border-radius:999px;font-size:28px;font-weight:600;
+  border:1px solid var(--line);background:rgba(8,11,20,.7)}
+.chip b{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;font-size:22px;color:#06070c;
+  background:linear-gradient(135deg,var(--cyan),var(--gold))}
+
+/* ---------- devices ---------- */
+.layer{position:absolute;inset:0;display:grid;place-items:center;transform-style:preserve-3d}
+.phone{width:660px;height:1330px;border-radius:66px;padding:13px;background:linear-gradient(160deg,#20242f,#0b0d14);
+  box-shadow:0 70px 140px -50px rgba(0,0,0,.95),0 0 0 1px rgba(255,255,255,.07);will-change:transform}
+.phone .screen{position:relative;width:100%;height:100%;border-radius:54px;overflow:hidden;background:#0a0d14}
+.desktop{width:1000px;border-radius:22px;background:linear-gradient(160deg,#1b2029,#0b0d14);padding:0 0 12px;
+  box-shadow:0 70px 140px -50px rgba(0,0,0,.95),0 0 0 1px rgba(255,255,255,.07);will-change:transform}
+.desktop .top{display:flex;align-items:center;gap:10px;padding:16px 20px}
+.desktop .top i{width:13px;height:13px;border-radius:50%;background:#39404f}
+.desktop .top .addr{flex:1;margin-inline-start:14px;height:30px;border-radius:99px;background:rgba(255,255,255,.07);
+  display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted);direction:ltr}
+.desktop .screen{position:relative;width:calc(100% - 24px);height:620px;margin-inline:12px;border-radius:12px;overflow:hidden;background:#0a0d14}
+.screen img{position:absolute;top:0;left:0;width:100%;display:block;will-change:transform}
+.glare{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,rgba(255,255,255,.14) 0%,transparent 32%,transparent 70%,rgba(255,255,255,.05) 100%)}
+
+/* ---------- captions ---------- */
+.cap{position:absolute;right:72px;bottom:190px;z-index:50;max-width:800px}
+.cap .mask{overflow:hidden;display:block}
+.cap .no{font-size:26px;font-weight:700;letter-spacing:.16em;color:var(--gold)}
+.cap h2{font-size:64px;font-weight:900;letter-spacing:-.035em;line-height:1.1}
+.cap .u{width:120px;height:5px;border-radius:99px;margin-top:20px;transform:scaleX(0);transform-origin:right center;
+  background:linear-gradient(90deg,var(--cyan),var(--gold))}
+
+/* ---------- grid moment ---------- */
+.grid{position:absolute;inset:0;z-index:40;display:grid;align-content:center;justify-content:center;
+  grid-template-columns:repeat(2,290px);gap:34px;padding:0 90px}
+.thumb{position:relative;height:500px;border-radius:26px;overflow:hidden;background:#0a0d14;
+  border:1px solid var(--line);box-shadow:0 40px 80px -40px #000;will-change:transform}
+.thumb img{position:absolute;top:0;left:0;width:100%}
+.gridcap{position:absolute;left:0;right:0;bottom:250px;text-align:center;z-index:41}
+.gridcap h2{font-size:76px;font-weight:900;letter-spacing:-.04em}
+
+/* ---------- title & closing cards ---------- */
+.card{position:absolute;inset:0;z-index:58;display:grid;place-content:center;justify-items:center;text-align:center;padding:0 90px}
+.mark{position:relative;width:250px;height:250px;display:grid;place-items:center;margin-bottom:56px}
+.mark .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,var(--cyan),var(--blue),var(--gold),var(--cyan))}
+.mark .hole{position:absolute;inset:13px;border-radius:50%;background:#070a12}
+.mark span{position:relative;font-size:104px;font-weight:700;
+  background:linear-gradient(140deg,var(--cyan),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.card h1{font-size:118px;font-weight:900;letter-spacing:-.04em;line-height:1.05}
+.card .sub{font-size:40px;color:var(--muted);margin-top:30px}
+.card .url{direction:ltr;font-size:42px;font-weight:600;padding:22px 52px;border-radius:999px;
+  border:1px solid var(--line);background:rgba(255,255,255,.05);margin-top:44px}
+.card .btn{font-size:48px;font-weight:800;color:#06070c;padding:30px 78px;border-radius:999px;margin-top:38px;
+  background:linear-gradient(120deg,var(--cyan),var(--blue) 55%,var(--gold))}
+.card .fine{margin-top:46px;font-size:24px;line-height:1.6;color:rgba(255,255,255,.42);max-width:40ch}
+.mask{overflow:hidden;display:block}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="vig"></div>
+  <div id="shots"></div>
+  <div class="grain"></div>
+  <div class="bar"><i></i></div>
+  <div class="chip" id="chip"><b>₪</b><span></span></div>
+</div>
+
+<script src="vendor/gsap.min.js"></script>
+<script>
+/* ===========================================================================
+   Builds the edit from promo/shots/shots.json (captured by site-shots.mjs) and
+   the brand block of promo/content.json.
+   ======================================================================== */
+const DATA = window.__CONTENT || { shots: [] };
+const stage = document.getElementById('stage');
+const shotsRoot = document.getElementById('shots');
+
+const el = (tag, cls, txt) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (txt != null) n.textContent = txt;
+  return n;
+};
+const rise = (txt, cls) => {           // text that comes up from behind a mask
+  const m = el('span', 'mask'), inner = el('span', cls, txt);
+  m.appendChild(inner);
+  return { m, inner };
+};
+
+/** Timing, in seconds. One place to re-cut the film. */
+const T = { intro: 2.8, shot: 3.5, grid: 2.8, outro: 3.6, trans: .85 };
+/** How each page is presented; the list cycles, so no two neighbours match. */
+const LOOKS = ['phone-rise', 'desktop-slide', 'phone-tilt', 'phone-zoom'];
+
+const master = gsap.timeline({ paused: true });
+let brand = { name: '', mark: '₪', tagline: '' }, cta = {};
+
+/** Device markup for one captured page. Returns the layer and its image. */
+function device(shot, look) {
+  const layer = el('div', 'layer');
+  const desktop = look === 'desktop-slide' && shot.views.desktop;
+  const view = desktop ? shot.views.desktop : (shot.views.phone || shot.views.desktop);
+  const frame = el('div', desktop ? 'desktop' : 'phone');
+  const screen = el('div', 'screen');
+  const img = el('img');
+  img.src = `/shots/${view.file}`;
+  img.alt = shot.title || shot.path;
+  screen.append(img, el('div', 'glare'));
+  if (desktop) {
+    const top = el('div', 'top');
+    let host = '';
+    try { host = new URL(DATA.site).host; } catch { host = (DATA.site || '').replace(/^\w+:\/\//, '').split('/')[0]; }
+    top.append(el('i'), el('i'), el('i'), el('div', 'addr', host));
+    frame.append(top, screen);
+  } else {
+    frame.append(screen);
+  }
+  layer.appendChild(frame);
+  shotsRoot.appendChild(layer);
+  return { layer, frame, img, view, desktop };
+}
+
+/** Caption block: index, page title, rule. */
+function caption(i, text) {
+  const cap = el('div', 'cap');
+  const no = rise(String(i + 1).padStart(2, '0'), 'no');
+  const h = rise(text, null);
+  const h2 = el('h2'); h2.appendChild(h.m);
+  const u = el('div', 'u');
+  cap.append(no.m, h2, u);
+  stage.appendChild(cap);
+  return { cap, parts: [no.inner, h.inner], u };
+}
+
+/** Title / closing card. */
+function card(build) {
+  const c = el('div', 'card');
+  build(c);
+  stage.appendChild(c);
+  return c;
+}
+
+async function boot() {
+  // brand + closing copy come from the same content.json the other renders use
+  try {
+    const c = await (await fetch('/content.json')).json();
+    brand = { ...brand, ...(c.brand || {}) };
+    cta = (c.scenes || []).find((s) => s.type === 'cta') || {};
+    for (const [k, v] of Object.entries(c.theme || {})) {
+      if (['c1', 'c2', 'c3'].includes(k)) {
+        document.documentElement.style.setProperty({ c1: '--blue', c2: '--cyan', c3: '--gold' }[k], v);
+      }
+    }
+  } catch {}
+  document.querySelector('#chip span').textContent = brand.name || '';
+
+  const shots = (DATA.shots || []).filter((s) => s.views && (s.views.phone || s.views.desktop));
+  const built = shots.map((s, i) => {
+    const look = LOOKS[i % LOOKS.length];
+    const d = device(s, look);
+    const cap = caption(i, s.heading || s.title || s.path);
+    return { ...d, shot: s, look, cap };
+  });
+
+  // grid moment: one thumbnail per page
+  const grid = el('div', 'grid');
+  const thumbs = shots.map((s) => {
+    const t = el('div', 'thumb');
+    const im = el('img');
+    im.src = `/shots/${(s.views.phone || s.views.desktop).file}`;
+    im.alt = '';
+    t.appendChild(im);
+    grid.appendChild(t);
+    return t;
+  });
+  // column count follows the page count, so the last row is never a lone tile
+  const cols = shots.length <= 3 ? Math.max(1, shots.length) : shots.length === 4 ? 2 : 3;
+  grid.style.gridTemplateColumns = `repeat(${cols}, ${cols === 3 ? 250 : 290}px)`;
+  if (cols === 3) for (const t of thumbs) t.style.height = '430px';
+  stage.appendChild(grid);
+  const gridCap = el('div', 'gridcap');
+  const gh = rise('כל האתר. במקום אחד.', null);
+  const gh2 = el('h2'); gh2.appendChild(gh.m);
+  gridCap.appendChild(gh2);
+  stage.appendChild(gridCap);
+
+  // title + closing cards
+  const intro = card((c) => {
+    const mark = el('div', 'mark');
+    mark.append(el('i', 'ring'), el('i', 'hole'), el('span', null, brand.mark || '₪'));
+    const h = rise(brand.name || '', null);
+    const h1 = el('h1'); h1.appendChild(h.m);
+    c.append(mark, h1, el('p', 'sub', brand.tagline || ''));
+    c._parts = [mark, h.inner, c.querySelector('.sub')];
+  });
+  const outro = card((c) => {
+    const h = rise(cta.title || 'בואו נדבר', null);
+    const h1 = el('h1'); h1.appendChild(h.m);
+    c.append(h1, el('div', 'url', cta.url || (DATA.site || '').replace(/^https?:\/\//, '').replace(/\/$/, '')));
+    c.append(el('div', 'btn', cta.button || 'לתיאום פגישה'));
+    if (cta.disclaimer) c.append(el('p', 'fine', cta.disclaimer));
+    c._parts = [h.inner, c.querySelector('.url'), c.querySelector('.btn'), c.querySelector('.fine')].filter(Boolean);
+  });
+
+  await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+  await document.fonts.ready;
+
+  /* ---- resting state before anything is placed on the timeline ---------- */
+  gsap.set([...built.map((b) => b.layer), grid, gridCap, outro], { autoAlpha: 0 });
+  gsap.set(built.map((b) => b.cap.cap), { autoAlpha: 0 });
+  gsap.set(thumbs, { autoAlpha: 0 });
+  gsap.set('#chip', { autoAlpha: 0 });
+
+  const total = T.intro + built.length * T.shot + T.grid + T.outro;
+
+  /* ---- 1. title card ----------------------------------------------------- */
+  master.from(intro._parts[0], { scale: .7, autoAlpha: 0, duration: .9, ease: 'back.out(1.5)' }, .1)
+        .from(intro._parts[1], { yPercent: 118, duration: .9, ease: 'expo.out' }, .35)
+        .from(intro._parts[2], { y: 30, autoAlpha: 0, duration: .6, ease: 'power3.out' }, .65)
+        .to(intro, { autoAlpha: 0, scale: 1.08, duration: .6, ease: 'power2.in' }, T.intro - .55)
+        .to('#chip', { autoAlpha: 1, duration: .4 }, T.intro - .4);
+
+  /* ---- 2. one segment per page ------------------------------------------ */
+  built.forEach((b, i) => {
+    const t0 = T.intro + i * T.shot;
+    const inner = b.desktop ? 620 : 1304;                 // visible screen height, px
+    const shown = (b.desktop ? 976 : 634) * (b.view.h / b.view.w);
+    const pan = Math.max(0, shown - inner);               // how far the page can travel
+
+    master.set(b.layer, { autoAlpha: 1 }, t0);
+    // entrance — a different move per look so consecutive pages never repeat
+    if (b.look === 'phone-rise') {
+      master.from(b.frame, { yPercent: 55, rotationX: 14, autoAlpha: 0, duration: T.trans, ease: 'expo.out' }, t0);
+    } else if (b.look === 'desktop-slide') {
+      master.from(b.frame, { xPercent: -40, rotationY: 28, autoAlpha: 0, duration: T.trans, ease: 'expo.out' }, t0);
+    } else if (b.look === 'phone-tilt') {
+      master.from(b.frame, { rotationY: -55, xPercent: 30, autoAlpha: 0, duration: T.trans, ease: 'expo.out' }, t0)
+            .fromTo(b.frame, { rotationY: -8 }, { rotationY: 6, duration: T.shot, ease: 'none' }, t0);
+    } else {
+      master.from(b.frame, { scale: 1.9, autoAlpha: 0, filter: 'blur(16px)', duration: T.trans, ease: 'power3.out' }, t0);
+    }
+
+    // the page itself travels while it is on screen — linear, like a real scroll
+    master.fromTo(b.img, { y: 0 }, { y: -pan, duration: T.shot - .25, ease: 'none' }, t0 + .15);
+    // slow push-in, so a static page still feels filmed
+    master.fromTo(b.frame, { scale: b.look === 'phone-zoom' ? 1 : .97 }, { scale: 1.03, duration: T.shot, ease: 'none' }, t0);
+
+    // caption
+    master.set(b.cap.cap, { autoAlpha: 1 }, t0 + .3)
+          .from(b.cap.parts, { yPercent: 115, duration: .7, ease: 'expo.out', stagger: .08 }, t0 + .3)
+          .fromTo(b.cap.u, { scaleX: 0 }, { scaleX: 1, duration: .5, ease: 'power3.out' }, t0 + .6)
+          .to(b.cap.cap, { autoAlpha: 0, y: -30, duration: .4, ease: 'power2.in' }, t0 + T.shot - .5);
+
+    // exit, matched to the next entrance
+    const out = i % 2 ? { xPercent: 55, rotationY: -35 } : { yPercent: -50, rotationX: -12 };
+    master.to(b.frame, { ...out, autoAlpha: 0, duration: .55, ease: 'power2.in' }, t0 + T.shot - .5)
+          .set(b.layer, { autoAlpha: 0 }, t0 + T.shot);
+  });
+
+  /* ---- 3. the grid: every page at once ---------------------------------- */
+  const g0 = T.intro + built.length * T.shot;
+  master.set(grid, { autoAlpha: 1 }, g0)
+        .set(gridCap, { autoAlpha: 1 }, g0 + .1)
+        .to(thumbs, {
+          autoAlpha: 1, duration: .5, ease: 'power3.out',
+          stagger: { each: .09, from: 'random' },
+        }, g0)
+        .from(thumbs, {
+          yPercent: 26, scale: .82, rotation: () => gsap.utils.random(-7, 7),
+          duration: .8, ease: 'expo.out', stagger: { each: .09, from: 'random' },
+        }, g0)
+        .from(gh.inner, { yPercent: 115, duration: .7, ease: 'expo.out' }, g0 + .5)
+        .fromTo(grid, { scale: 1 }, { scale: 1.06, duration: T.grid, ease: 'none' }, g0)
+        .to([grid, gridCap], { autoAlpha: 0, scale: .9, duration: .55, ease: 'power2.in' }, g0 + T.grid - .55);
+
+  /* ---- 4. closing ------------------------------------------------------- */
+  const o0 = g0 + T.grid;
+  master.set(outro, { autoAlpha: 1 }, o0)
+        .from(outro._parts[0], { yPercent: 118, duration: .8, ease: 'expo.out' }, o0)
+        .from(outro._parts.slice(1), { y: 34, autoAlpha: 0, duration: .55, ease: 'power3.out', stagger: .12 }, o0 + .3);
+
+  /* ---- ambient + progress, across the whole film ------------------------ */
+  master.fromTo('.b1', { x: 0, y: 0 }, { x: -120, y: 180, duration: total, ease: 'none' }, 0)
+        .fromTo('.b2', { x: 0, y: 0 }, { x: 150, y: -120, duration: total, ease: 'none' }, 0)
+        .fromTo('.b3', { x: 0, y: 0 }, { x: -90, y: -160, duration: total, ease: 'none' }, 0)
+        .fromTo('.bar i', { scaleX: 0 }, { scaleX: 1, duration: total, ease: 'none' }, 0);
+
+  window.__duration = total;
+  master.time(0);
+  return true;
+}
+
+window.__ready = boot();
+window.__seek = (t) => { master.time(t); };
+</script>
+</body>
+</html>

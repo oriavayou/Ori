@@ -24,7 +24,14 @@ npm run site -- --url https://iftach-advise.com/
 npm run site -- --url https://iftach-advise.com/ --hide ".cookie-banner,.whatsapp-float,#INDmenu-btn"
 ```
 
-לסרטון הגרפי בלבד (בלי צילום האתר): `npm run render`.
+שלוש גרסאות, שלוש פקודות:
+
+| פקודה | מה מקבלים |
+| --- | --- |
+| `npm run tour -- --url https://iftach-advise.com/` | **סרטון ערוך** — מעברים בין דפי האתר, מסגרות מכשיר, רגע רשת |
+| `npm run site -- --url https://iftach-advise.com/` | האתר האמיתי בגלילה רציפה, בין פתיח לסיום |
+| `npm run scroll` | עמוד הגלילה הקולנועי שנבנה כאן |
+| `npm run render` | הסרטון הגרפי בלבד (בלי צילום האתר) |
 
 ```
 promo/
@@ -33,6 +40,7 @@ promo/
   scene.html          ← העיצוב וההנפשה (RTL, גופן Rubik מוטמע)
   fonts.css           ← Rubik (עברית + לטינית) מוטמע כ־base64
   site/index.html     ← עמוד הגלילה הקולנועי (GSAP + ScrollTrigger + SplitText + Lenis)
+  site/tour.html      ← העריכה: מעברים בין דפי האתר (מרונדר מ-shots/)
   tools/render.mjs    ← מרנדר את הסצנה ל־MP4
   tools/site-promo.mjs← מצלם את האתר האמיתי ועוטף אותו בפתיח וסיום
   tools/lib.mjs
@@ -61,6 +69,37 @@ ffmpeg אחר: `FFMPEG=/usr/bin/ffmpeg npm run render`.
 | `--out path.mp4` | נתיב פלט |
 | `--format png` | פריימים ללא דחיסה — איכות מקסימלית, איטי יותר |
 | `--fps 60` `--duration 30` | דריסה של התזמון מ־`content.json` |
+
+## סרטון ערוך של האתר — מעברים בין דפים
+
+זה הכלי ה"קולנועי" מבין השלושה. הוא מצלם כל דף באתר בנפרד (במסך טלפון ובמסך
+דסקטופ), ואז מרכיב מהם **עריכה**: כרטיס פתיחה → דף אחרי דף, כשלכל דף כניסה אחרת
+(עלייה, החלקה תלת-ממדית, טילט, זום-אין) והדף עצמו נע בתוך מסגרת המכשיר → רגע שבו
+כל הדפים עפים יחד לרשת אחת → כרטיס סיום.
+
+```bash
+npm run tour -- --url https://iftach-advise.com/
+```
+
+הכלי מגלה את הדפים לבד מהקישורים בתפריט. לשליטה ידנית:
+
+| דגל | מה זה עושה |
+| --- | --- |
+| `--pages "/,/about,/contact"` | בדיוק הדפים האלה, בסדר הזה |
+| `--max 5` | כמה דפים לקחת בגילוי אוטומטי (ברירת מחדל 4) |
+| `--hide ".cookie,#chat"` | להסתיר אלמנטים לפני הצילום |
+| `--tall 7000` | חיתוך דפים ארוכים במיוחד (בפיקסלים) |
+| `--out path.mp4` | נתיב פלט |
+
+הצילומים נשמרים ב-`promo/shots/` יחד עם `shots.json` (מניפסט: נתיב, כותרת, כותרת
+ראשית וגדלים). אפשר לרנדר מחדש בלי לצלם שוב:
+
+```bash
+node tools/render.mjs --page site/tour.html --data promo/shots/shots.json --out promo/out/tour-9x16.mp4
+```
+
+התזמון של העריכה נמצא בראש הסקריפט ב-`site/tour.html` (`const T = {...}`) — שם
+משנים אורך של כל שוט, של הפתיח ושל רגע הרשת.
 
 ## עמוד הגלילה הקולנועי → סרטון
 

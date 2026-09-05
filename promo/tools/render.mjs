@@ -9,8 +9,12 @@
  *   node promo/tools/render.mjs                       # full render -> meta.output
  *   node promo/tools/render.mjs --scale 0.5           # fast draft
  *   node promo/tools/render.mjs --stills 0,5,9,14,18  # PNG stills instead of video
+ *   node promo/tools/render.mjs --page site/tour.html --data shots/shots.json --out promo/out/tour.mp4
  *
- * Options: --content --out --fps --duration --scale --stills --format --quality --quiet
+ * Any page that exposes window.__ready, window.__seek(t) and (optionally)
+ * window.__duration can be rendered this way.
+ *
+ * Options: --page --data --out --fps --duration --scale --stills --format --quality --quiet
  * Env: FFMPEG=/path/to/ffmpeg (otherwise ffmpeg-static, otherwise `ffmpeg` on PATH)
  */
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -23,11 +27,12 @@ const ROOT = resolve(HERE, '..', '..');
 const PROMO = resolve(HERE, '..');
 
 const { get, has } = args();
-const contentPath = resolve(ROOT, get('content', join(PROMO, 'content.json')));
+const contentPath = resolve(ROOT, get('data', get('content', join(PROMO, 'content.json'))));
+const pageFile = get('page', 'scene.html');
 const content = JSON.parse(readFileSync(contentPath, 'utf8'));
 const meta = content.meta || {};
 const fps = Number(get('fps', meta.fps || 30));
-const duration = Number(get('duration', meta.duration || 20));
+let duration = Number(get('duration', meta.duration || 20));
 const scale = Number(get('scale', 1));
 const width = Math.round((meta.width || 1080) * scale);
 const height = Math.round((meta.height || 1920) * scale);
@@ -44,10 +49,16 @@ const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ args: ['--force-color-profile=srgb', '--disable-lcd-text'] });
 const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
 await page.addInitScript((c) => { window.__CONTENT = c; }, content);
-await page.goto(server.origin + '/scene.html', { waitUntil: 'load' });
+await page.goto(server.origin + '/' + pageFile, { waitUntil: 'load' });
 await page.evaluate(() => window.__ready);
 await page.addStyleTag({ content: `.stage{zoom:${scale}}` });
 await page.evaluate(() => document.documentElement.classList.add('paused'));
+
+// a page may know its own length (the tour builds its timeline from the shots)
+if (!get('duration', null)) {
+  const own = await page.evaluate(() => window.__duration ?? null);
+  if (own) duration = own;
+}
 
 // one round-trip per frame: seek, then wait for the next paint
 const seek = (t) =>
@@ -84,7 +95,7 @@ await enc.finish();
 log('');
 
 // cover image, taken from the middle of the opening scene
-const coverAt = Math.min(duration - 0.1, (content.scenes?.[0]?.end ?? 4) - 0.9);
+const coverAt = Math.min(duration - 0.1, (content.scenes?.[0]?.end ?? duration * 0.12) - 0.9);
 await seek(Math.max(0, coverAt));
 const cover = join(dirname(outPath), 'cover.png');
 writeFileSync(cover, await page.screenshot({ type: 'png' }));
