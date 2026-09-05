@@ -127,9 +127,14 @@ async function renderSite() {
   // pages that build their own scroll timeline announce when it is ready
   await page.evaluate(() => window.__ready).catch(() => {});
 
+  // Never add a CSS transition to a page that animates with JS: the browser would
+  // ease toward every value the animation library sets, so a frame captured right
+  // after a seek shows the *previous* state. Only shorten transitions on pages
+  // that have no scroll timeline of their own.
+  const ownsTimeline = await page.evaluate(() => typeof window.__renderSeek === 'function');
   await page.addStyleTag({
     content: `html{scroll-behavior:auto !important}
-      *,*::before,*::after{transition-duration:.15s !important}
+      ${ownsTimeline ? '' : '*,*::before,*::after{transition-duration:.12s !important}'}
       ${hideSel.length ? hideSel.join(',') + '{display:none !important}' : ''}`,
   });
 
