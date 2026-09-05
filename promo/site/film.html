@@ -68,6 +68,30 @@ body{display:grid;place-items:center;min-height:100vh}
 .end .url{direction:ltr;font-size:38px;font-weight:500;letter-spacing:.02em;margin-top:54px;color:var(--paper)}
 .end .cta{font-size:40px;font-weight:700;color:var(--ink);background:var(--gold);padding:26px 64px;margin-top:40px}
 .end .fine{margin-top:56px;font-size:22px;line-height:1.6;color:rgba(242,237,228,.34);max-width:42ch}
+.logo{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:30px;padding:0 110px}
+.logo img{width:min(920px,92%);height:auto;display:block}
+.logo .wordmark{font-size:110px;font-weight:900;letter-spacing:-.05em;color:var(--gold)}
+.logo .tag{font-size:30px;color:var(--dim);letter-spacing:.02em}
+
+.creds{position:absolute;inset:0;display:grid;align-content:center;gap:0;padding:0 96px}
+.cred{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:26px;padding:34px 0;
+  border-bottom:1px solid var(--rule)}
+.cred i{font-style:normal;font-size:24px;font-weight:500;color:var(--gold);letter-spacing:.14em}
+.cred span{font-size:54px;font-weight:700;letter-spacing:-.035em}
+
+.list{position:absolute;inset:0;display:grid;align-content:center;gap:0;padding:0 96px}
+.row{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:24px;padding:26px 0;
+  border-bottom:1px solid var(--rule)}
+.row i{font-style:normal;font-size:22px;font-weight:500;color:var(--gold);font-variant-numeric:tabular-nums}
+.row span{font-size:44px;font-weight:600;letter-spacing:-.03em;line-height:1.2}
+
+.proof{position:absolute;inset:0;display:grid;align-content:center;gap:22px;padding:0 96px}
+.proof .big{font-size:132px;font-weight:900;letter-spacing:-.055em;color:var(--gold);
+  font-variant-numeric:tabular-nums;line-height:1.02}
+.proof .then{font-size:52px;font-weight:700;letter-spacing:-.035em}
+.proof .src{font-size:26px;color:var(--dim);margin-top:16px}
+
+.end img.mark{width:min(760px,86%);height:auto;margin-bottom:10px}
 .corner{position:absolute;bottom:74px;right:96px;font-size:26px;font-weight:500;color:var(--dim);letter-spacing:.02em}
 </style>
 </head>
@@ -95,16 +119,31 @@ body{display:grid;place-items:center;min-height:100vh}
    `shot` picks a page from promo/shots/shots.json by index.
    ======================================================================== */
 const SCRIPT = [
-  { type: 'say',   hold: 4.2, lines: ['כסף לא אוהב אלתור.'] },
-  { type: 'say',   hold: 4.4, lines: ['כל שקל שנשאר לגורל', 'מישהו אחר מנהל אותו.'] },
-  { type: 'plate', hold: 4.4, shot: 0, view: 'phone',
-    label: 'יפתח ונגר · ייעוץ והדרכת השקעות', kicker: 'האתר' },
-  { type: 'say',   hold: 4.2, lines: ['אני לא מבטיח תשואות.', 'אני בונה <em>סדר</em>.'] },
-  { type: 'burst', hold: 5.1, words: ['השקעות', 'משכנתאות', 'אשראי עסקי'] },
-  { type: 'plate', hold: 4.2, shot: 1, view: 'desktop',
-    label: 'תהליך אחד, ברור מהשיחה הראשונה', kicker: 'איך זה עובד' },
-  { type: 'say',   hold: 4.0, lines: ['אתם מחליטים.', 'אני דואג שתחליטו', 'עם כל המידע.'] },
-  { type: 'end',   hold: 4.5 },
+  // HOOK — the one question that separates an objective adviser from a seller
+  { type: 'hook',  hold: 4.0, lines: ['מי משלם', 'ליועץ שלכם?'] },
+  { type: 'say',   hold: 4.0, lines: ['כשהייעוץ תלוי במוצר שנמכר לכם,', 'הוא כבר לא באמת <em>שלכם</em>.'] },
+  // TURN — the line becomes his logo
+  { type: 'logo',  hold: 3.6, tag: 'ייעוץ השקעות וייעוץ פנסיוני אובייקטיבי' },
+  // CREDIBILITY
+  { type: 'creds', hold: 4.0, items: [
+      ['01', 'יועץ השקעות בעל רישיון'],
+      ['02', 'יועץ פנסיוני'],
+      ['03', 'כלכלן ואקטואר'],
+  ] },
+  { type: 'plate', hold: 3.6, shot: 0, view: 'phone', kicker: 'האתר', label: 'iftach-advise.com' },
+  // FEATURES
+  { type: 'list',  hold: 5.4, kicker: 'מה נכנס לתמונה', items: [
+      'ייעוץ והדרכת השקעות',
+      'ייעוץ פנסיוני',
+      'משכנתאות ומיחזור',
+      'אשראי עסקי והלוואות בערבות מדינה',
+      'הערכות שווי ותחשיבים אקטואריים',
+  ] },
+  // BENEFIT — a real number, attributed
+  { type: 'proof', hold: 4.4, big: '100,000 ₪', then: 'נחסכו ללקוח אחד במיחזור משכנתה.',
+    src: 'מתוך המלצות הלקוחות באתר · ‎₪500 בחודש' },
+  { type: 'plate', hold: 3.2, shot: 1, view: 'desktop', kicker: 'התהליך', label: 'משיחה ראשונה ועד תוכנית' },
+  { type: 'end',   hold: 4.8 },
 ];
 
 gsap.registerPlugin(CustomEase, MorphSVGPlugin);
@@ -112,6 +151,9 @@ gsap.registerPlugin(CustomEase, MorphSVGPlugin);
 CustomEase.create('brand', 'M0,0 C0.14,0 0.06,1 1,1');
 
 const DATA = window.__CONTENT || { shots: [] };
+/** Put the brand's logo at promo/brand/logo.png (white background is fine —
+ *  run tools/prep-logo.mjs to knock it out). Everything falls back to type. */
+const LOGO = '/brand/logo-alpha.png';
 const stage = document.getElementById('stage');
 const root = document.getElementById('scenes');
 const el = (tag, cls, html) => {
@@ -154,9 +196,10 @@ async function boot() {
   for (const [i, sc] of SCRIPT.entries()) {
     const start = t, end = t + sc.hold;
 
-    if (sc.type === 'say') {
+    if (sc.type === 'say' || sc.type === 'hook') {
       const wrap = el('div', 'scene');
       const h = el('div', 'say');
+      if (sc.type === 'hook') h.style.fontSize = '124px';
       const masks = sc.lines.map((line) => {
         const m = el('span', 'm');
         const inner = el('span', null, line);
@@ -177,6 +220,70 @@ async function boot() {
             .to(wrap, { autoAlpha: 0, y: -46, duration: OUT, ease: 'power2.in' }, end - OUT)
             .set(wrap, { autoAlpha: 0 }, end);
       gsap.set(wrap, { autoAlpha: 0 });
+    }
+
+    if (sc.type === 'logo') {
+      const wrap = el('div', 'logo');
+      const img = el('img');
+      img.src = LOGO;
+      img.alt = brand.name || '';
+      const tag = el('div', 'tag', sc.tag || brand.tagline || '');
+      img.onerror = () => {           // no logo file: fall back to type
+        img.remove();
+        wrap.prepend(el('div', 'wordmark', brand.name || ''));
+      };
+      img.onload = () => tag.remove(); // the logo already says it
+      wrap.append(img, tag);
+      root.appendChild(wrap);
+      gsap.set(wrap, { autoAlpha: 0 });
+      // the through-line hands off to the mark: it rises to meet it and clears
+      master.set(wrap, { autoAlpha: 1 }, start)
+            .to('.motif', { y: -520, opacity: 0, duration: .7, ease: 'brand' }, start - .35)
+            .from(img, { scale: .94, autoAlpha: 0, duration: 1.1, ease: 'brand' }, start + .1)
+            .from(wrap.querySelector('.tag'), { y: 22, autoAlpha: 0, duration: .7, ease: 'brand' }, start + .55)
+            .to(wrap, { autoAlpha: 0, duration: OUT, ease: 'power2.in' }, end - OUT)
+            .set(wrap, { autoAlpha: 0 }, end)
+            .to('.motif', { y: 0, opacity: .9, duration: .8, ease: 'brand' }, end - .3);
+    }
+
+    if (sc.type === 'creds' || sc.type === 'list') {
+      const isList = sc.type === 'list';
+      const wrap = el('div', isList ? 'list' : 'creds');
+      if (sc.kicker) {
+        const k = el('div', 'eyebrow', sc.kicker);
+        k.style.marginBottom = '34px';
+        wrap.appendChild(k);
+      }
+      const rows = (sc.items || []).map((item, k) => {
+        const row = el('div', isList ? 'row' : 'cred');
+        const num = el('i', null, isList ? String(k + 1).padStart(2, '0') : item[0]);
+        const label = el('span', null, isList ? item : item[1]);
+        row.append(num, label);
+        wrap.appendChild(row);
+        return row;
+      });
+      root.appendChild(wrap);
+      gsap.set(wrap, { autoAlpha: 0 });
+      master.set(wrap, { autoAlpha: 1 }, start)
+            .from(rows, { y: 34, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .13 }, start + .1)
+            .fromTo(wrap, { y: 12 }, { y: -12, duration: sc.hold, ease: 'none' }, start)
+            .to(wrap, { autoAlpha: 0, y: -40, duration: OUT, ease: 'power2.in' }, end - OUT)
+            .set(wrap, { autoAlpha: 0 }, end);
+    }
+
+    if (sc.type === 'proof') {
+      const wrap = el('div', 'proof');
+      const big = el('div', 'big', sc.big || '');
+      const then = el('div', 'then', sc.then || '');
+      const src = el('div', 'src', sc.src || '');
+      wrap.append(big, then, src);
+      root.appendChild(wrap);
+      gsap.set(wrap, { autoAlpha: 0 });
+      master.set(wrap, { autoAlpha: 1 }, start)
+            .from(big, { yPercent: 40, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
+            .from([then, src], { y: 26, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .14 }, start + .35)
+            .to(wrap, { autoAlpha: 0, y: -36, duration: OUT, ease: 'power2.in' }, end - OUT)
+            .set(wrap, { autoAlpha: 0 }, end);
     }
 
     if (sc.type === 'plate') {
@@ -224,17 +331,23 @@ async function boot() {
 
     if (sc.type === 'end') {
       const wrap = el('div', 'end');
-      const h1 = el('h1', null, brand.name || '');
+      const mark = el('img', 'mark');
+      mark.src = LOGO;
+      mark.alt = brand.name || '';
+      const h1 = el('h1', null, '');
+      mark.onerror = () => { mark.remove(); h1.textContent = brand.name || ''; };
+      mark.onload = () => sub.remove();
       const sub = el('div', 'sub', brand.tagline || '');
+      // (removed when the logo image loads — it carries the tagline itself)
       const url = el('div', 'url', cta.url || host);
       const btn = el('div', 'cta', cta.button || 'לתיאום פגישה');
       const fine = cta.disclaimer ? el('p', 'fine', cta.disclaimer) : null;
-      wrap.append(h1, sub, url, btn);
+      wrap.append(mark, h1, sub, url, btn);
       if (fine) wrap.append(fine);
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from(h1, { yPercent: 30, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
+            .from([mark, h1], { yPercent: 18, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
             .from([sub, url, btn, fine].filter(Boolean),
               { y: 28, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .14 }, start + .3);
     }

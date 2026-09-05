@@ -31,3 +31,5 @@ promo/site/vendor/
 promo/site/artifact.html
 promo/.vendor-tmp/
 promo/shots/
+# the client's own brand assets live here, not in the repo
+promo/brand/
