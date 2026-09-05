@@ -22,12 +22,15 @@ coverage/
 
 # Build files
 *.tsbuildinfo
-# Promo video render scratch (the final mp4 + cover are committed)
-promo/out/still-*.png
-promo/out/bench.mp4
-promo/out/preview.mp4
 
-# Promo scroll-site build outputs (regenerate: npm run setup / npm run artifact)
+# Promo: everything under out/ is generated; only the delivered videos are kept
+promo/out/*
+!promo/out/promo-9x16.mp4
+!promo/out/promo-scroll-9x16.mp4
+!promo/out/cover.png
+!promo/out/site-cover.png
+
+# Promo: fetched or built, not source
 promo/site/vendor/
 promo/site/artifact.html
 promo/.vendor-tmp/
