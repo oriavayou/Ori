@@ -40,9 +40,18 @@ export async function serveDir(dir) {
   return { origin: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
 }
 
+/** FFMPEG env var, else the ffmpeg-static binary, else whatever is on PATH. */
+export async function ffmpegPath() {
+  if (process.env.FFMPEG) return process.env.FFMPEG;
+  try {
+    const m = await import('ffmpeg-static');
+    if (m.default) return m.default;
+  } catch {}
+  return 'ffmpeg';
+}
+
 /** An ffmpeg process that turns a stream of image buffers into an H.264 mp4. */
-export function encoder(outPath, { fps = 30, crf = 19 } = {}) {
-  const bin = process.env.FFMPEG || 'ffmpeg';
+export function encoder(outPath, { fps = 30, crf = 19, bin = 'ffmpeg' } = {}) {
   const ff = spawn(bin, [
     '-y', '-hide_banner', '-loglevel', 'error',
     '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',

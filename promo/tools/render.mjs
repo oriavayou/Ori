@@ -11,12 +11,12 @@
  *   node promo/tools/render.mjs --stills 0,5,9,14,18  # PNG stills instead of video
  *
  * Options: --content --out --fps --duration --scale --stills --format --quality --quiet
- * Env: FFMPEG=/path/to/ffmpeg (defaults to `ffmpeg` on PATH)
+ * Env: FFMPEG=/path/to/ffmpeg (otherwise ffmpeg-static, otherwise `ffmpeg` on PATH)
  */
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { args, loadPlaywright, serveDir, encoder, progress } from './lib.mjs';
+import { args, loadPlaywright, serveDir, encoder, progress, ffmpegPath } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -71,7 +71,7 @@ if (stills) {
 }
 
 const total = Math.round(duration * fps);
-const enc = encoder(outPath, { fps });
+const enc = encoder(outPath, { fps, bin: await ffmpegPath() });
 
 log(`rendering ${total} frames @ ${width}x${height} ${fps}fps -> ${outPath}`);
 const t0 = Date.now();

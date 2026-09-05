@@ -4,6 +4,28 @@
 פריים־אחר־פריים. כל הטקסטים, הצבעים והתזמונים יושבים בקובץ אחד — `content.json` —
 כך שהחלפת תוכן היא עריכת JSON והרצה מחדש, בלי לגעת בעיצוב.
 
+## התחלה מהירה — להריץ על האתר האמיתי
+
+דרוש Node 18+ בלבד. שלוש פקודות:
+
+```bash
+git clone -b claude/website-promo-video-aler3z https://github.com/oriavayou/Ori.git
+cd Ori/promo
+npm run setup                                    # תלויות + דפדפן (פעם אחת, ~2 דקות)
+npm run site -- --url https://iftach-advise.com/
+```
+
+הפלט: `promo/out/site-promo.mp4` — פתיח ממותג, האתר האמיתי נגלל, וכרטיס סיום.
+הרינדור לוקח כ-3–6 דקות (הוא מצלם כל פריים בנפרד, לא מקליט מסך).
+
+אם יש באנר עוגיות, בועת ווטסאפ או ווידג'ט נגישות שמפריעים בפריים — מסתירים אותם:
+
+```bash
+npm run site -- --url https://iftach-advise.com/ --hide ".cookie-banner,.whatsapp-float,#INDmenu-btn"
+```
+
+לסרטון הגרפי בלבד (בלי צילום האתר): `npm run render`.
+
 ```
 promo/
   content.json        ← כל התוכן: מותג, סלוגן, סצנות, צבעים, תזמונים
@@ -20,15 +42,13 @@ promo/
 ## הרצה
 
 ```bash
-npm i -D playwright ffmpeg-static     # פעם אחת
-node promo/tools/render.mjs           # רינדור מלא → promo/out/promo-9x16.mp4
+cd promo && npm run setup     # פעם אחת
+npm run render                # רינדור מלא → promo/out/promo-9x16.mp4
+npm run draft                 # טיוטה מהירה בחצי רזולוציה
 ```
 
-אם `ffmpeg` לא מותקן ב-PATH:
-
-```bash
-FFMPEG=./node_modules/ffmpeg-static/ffmpeg node promo/tools/render.mjs
-```
+הכלים מוצאים את ffmpeg לבד (דרך `ffmpeg-static` שמותקן עם התלויות). אם מעדיפים
+ffmpeg אחר: `FFMPEG=/usr/bin/ffmpeg npm run render`.
 
 ### דגלים שימושיים
 

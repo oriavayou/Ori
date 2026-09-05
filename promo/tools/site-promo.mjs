@@ -25,12 +25,12 @@
  *   --hide       comma separated selectors to hide (cookie bars, chat bubbles)
  *   --no-overlay drop the brand chip + progress bar drawn over the site
  *   --fps --quality --quiet
- * Env: FFMPEG=/path/to/ffmpeg
+ * Env: FFMPEG=/path/to/ffmpeg (otherwise ffmpeg-static, otherwise `ffmpeg` on PATH)
  */
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { args, loadPlaywright, serveDir, encoder, progress } from './lib.mjs';
+import { args, loadPlaywright, serveDir, encoder, progress, ffmpegPath } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -84,7 +84,7 @@ mkdirSync(dirname(outPath), { recursive: true });
 const server = await serveDir(PROMO);
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ args: ['--force-color-profile=srgb', '--disable-lcd-text'] });
-const enc = encoder(outPath, { fps });
+const enc = encoder(outPath, { fps, bin: await ffmpegPath() });
 const t0 = Date.now();
 let written = 0;
 const totalFrames = Math.round(totalSecs * fps);
