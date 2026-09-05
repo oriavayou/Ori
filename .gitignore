@@ -26,3 +26,8 @@ coverage/
 promo/out/still-*.png
 promo/out/bench.mp4
 promo/out/preview.mp4
+
+# Promo scroll-site build outputs (regenerate: npm run setup / npm run artifact)
+promo/site/vendor/
+promo/site/artifact.html
+promo/.vendor-tmp/

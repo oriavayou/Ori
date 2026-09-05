@@ -37,7 +37,7 @@ const ROOT = resolve(HERE, '..', '..');
 const PROMO = resolve(HERE, '..');
 
 const { get, has } = args();
-const url = get('url');
+let url = get('url');
 if (!url) {
   console.error('usage: node promo/tools/site-promo.mjs --url https://your-site.com/');
   process.exit(1);
@@ -51,7 +51,7 @@ const outPath = resolve(ROOT, get('out', 'promo/out/site-promo.mp4'));
 const scrollSecs = Number(get('scroll', 13));
 const holdTop = Number(get('hold-top', 1.2));
 const holdEnd = Number(get('hold-end', 1));
-const cssWidth = Number(get('css-width', 430));
+const cssWidth = Number(get('css-width', 432));  // 432 * 2.5 = 1080 exactly
 const hideSel = (get('hide', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
 const overlay = !has('no-overlay');
 const quiet = has('quiet');
@@ -82,9 +82,11 @@ const clipContent = (clip, offset) => ({
 
 mkdirSync(dirname(outPath), { recursive: true });
 const server = await serveDir(PROMO);
+// a bare path means "a page inside promo/", e.g. --url site/index.html?render=1
+if (!/^(https?|file):/.test(url)) url = server.origin + '/' + url.replace(/^\/+/, '');
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ args: ['--force-color-profile=srgb', '--disable-lcd-text'] });
-const enc = encoder(outPath, { fps, bin: await ffmpegPath() });
+const enc = encoder(outPath, { fps, bin: await ffmpegPath(), size: [W, H] });
 const t0 = Date.now();
 let written = 0;
 const totalFrames = Math.round(totalSecs * fps);
@@ -122,6 +124,8 @@ async function renderSite() {
   log(`\nloading ${url} at ${cssWidth}x${vh} css px (dpr ${(W / cssWidth).toFixed(2)})`);
   await page.goto(url, { waitUntil: 'load', timeout: 90000 });
   await page.waitForLoadState('networkidle', { timeout: 45000 }).catch(() => {});
+  // pages that build their own scroll timeline announce when it is ready
+  await page.evaluate(() => window.__ready).catch(() => {});
 
   await page.addStyleTag({
     content: `html{scroll-behavior:auto !important}
@@ -182,7 +186,10 @@ async function renderSite() {
     const y = Math.round(ease(p) * maxScroll);
     await page.evaluate(
       ([yy, prog]) => {
-        window.scrollTo(0, yy);
+        // pages with scroll-driven animation expose __renderSeek so the frame is
+        // guaranteed to be laid out for this exact scroll position
+        if (window.__renderSeek) window.__renderSeek(yy);
+        else window.scrollTo(0, yy);
         const bar = document.querySelector('#__promo_bar i');
         if (bar) bar.style.transform = `scaleX(${prog})`;
         return new Promise((r) => requestAnimationFrame(() => r(true)));

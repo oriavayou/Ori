@@ -51,10 +51,13 @@ export async function ffmpegPath() {
 }
 
 /** An ffmpeg process that turns a stream of image buffers into an H.264 mp4. */
-export function encoder(outPath, { fps = 30, crf = 19, bin = 'ffmpeg' } = {}) {
+export function encoder(outPath, { fps = 30, crf = 19, bin = 'ffmpeg', size } = {}) {
   const ff = spawn(bin, [
     '-y', '-hide_banner', '-loglevel', 'error',
     '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',
+    // a device pixel ratio that does not divide the viewport evenly can leave a
+    // frame an odd pixel short, which H.264 refuses outright
+    ...(size ? ['-vf', `scale=${size[0]}:${size[1]}:flags=lanczos`] : []),
     '-c:v', 'libx264', '-preset', 'slow', '-crf', String(crf),
     '-profile:v', 'high', '-level', '4.2',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',

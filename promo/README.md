@@ -32,6 +32,7 @@ promo/
   content.example.json← תבנית ריקה להתחלה מאפס
   scene.html          ← העיצוב וההנפשה (RTL, גופן Rubik מוטמע)
   fonts.css           ← Rubik (עברית + לטינית) מוטמע כ־base64
+  site/index.html     ← עמוד הגלילה הקולנועי (GSAP + ScrollTrigger + SplitText + Lenis)
   tools/render.mjs    ← מרנדר את הסצנה ל־MP4
   tools/site-promo.mjs← מצלם את האתר האמיתי ועוטף אותו בפתיח וסיום
   tools/lib.mjs
@@ -61,6 +62,28 @@ ffmpeg אחר: `FFMPEG=/usr/bin/ffmpeg npm run render`.
 | `--format png` | פריימים ללא דחיסה — איכות מקסימלית, איטי יותר |
 | `--fps 60` `--duration 30` | דריסה של התזמון מ־`content.json` |
 
+## עמוד הגלילה הקולנועי → סרטון
+
+`site/index.html` הוא עמוד נחיתה מונפש בגלילה: כותרת שנחשפת אות-אות מאחורי מסכה,
+שכבות פרלקס, כרטיסים שנערמים, סקשן מוצמד (pinned) שבו השלבים נכנסים אחד-אחד,
+וטיקר שנע עם הגלילה. אותו קובץ הוא גם מקור הסרטון:
+
+```bash
+npm run scroll        # → promo/out/promo-scroll-9x16.mp4
+```
+
+לעמוד שני מצבים. במצב רגיל רצה גלילה חלקה (Lenis) על לולאת ה-ticker היחידה של GSAP,
+והחשיפות נכנסות בעקומת ease-out. בהוספת `?render=1` הגלילה החלקה מכובה, כל תנועה
+שתלויה בשעון מוחלפת בתנועה שתלויה במיקום הגלילה, והעמוד חושף `window.__renderSeek(y)`
+— כך שכל פריים בסרטון יוצא זהה בכל הרצה. גם `prefers-reduced-motion` מכובד: מי
+שביקש פחות תנועה מקבל את העמוד סטטי ומלא.
+
+לגרסה שיתופית בקובץ אחד (גופנים מוטמעים, ספריות מ-CDN):
+
+```bash
+npm run artifact      # → site/artifact.html
+```
+
 ## סרטון של האתר עצמו
 
 `site-promo.mjs` מפיק סרטון שמראה את האתר האמיתי — לא גרפיקה שמדמה אותו:
@@ -82,7 +105,7 @@ node promo/tools/site-promo.mjs --url https://iftach-advise.com/
 | `--url` | הדף לצילום — `https://…` או `file:///…` לעותק שמור |
 | `--scroll 13` | כמה שניות נמשכת הגלילה לאורך הדף |
 | `--hold-top` / `--hold-end` | עצירה בראש הדף ובסופו |
-| `--css-width 430` | רוחב הלייאאוט שמצולם (למשל `1280` לגרסת דסקטופ) |
+| `--css-width 432` | רוחב הלייאאוט שמצולם (למשל `1280` לגרסת דסקטופ) |
 | `--hide ".cookie,#chat"` | הסתרת באנר עוגיות, בועת ווטסאפ, ווידג'ט נגישות |
 | `--intro intro,hook` / `--outro cta` | אילו סצנות מ־`content.json` יהיו הפתיח והסיום |
 | `--no-overlay` | בלי שבב המותג ופס ההתקדמות מעל האתר |

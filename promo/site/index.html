@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>יפתח ונגר · ייעוץ והדרכת השקעות</title>
+<link rel="stylesheet" href="../fonts.css">
+</head>
+<body>
+<!--ARTIFACT:START-->
+<!--FONTS-->
+<style>
+/* ============================================================================
+   Motion tokens live in JS (see MOTION below); these are the design tokens.
+   Everything that animates does so on transform/opacity only.
+   ========================================================================= */
+:root{
+  --bg:#05070d; --bg-2:#080c16; --ink:#f4f7fc; --muted:#93a0bb;
+  --blue:#3b82f6; --cyan:#43d9ff; --gold:#f0b429;
+  --line:rgba(255,255,255,.10);
+  --panel:linear-gradient(150deg,rgba(255,255,255,.075),rgba(255,255,255,.02));
+  --gutter:clamp(20px,5.5vw,72px);
+  --maxw:1180px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+/* Lenis needs these; they are also harmless without it. */
+html.lenis,html.lenis body{height:auto}
+.lenis.lenis-smooth{scroll-behavior:auto !important}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:'Rubik',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-weight:400;line-height:1.5;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{line-height:1.08;letter-spacing:-.035em;font-weight:900}
+section{position:relative}
+.wrap{max-width:var(--maxw);margin-inline:auto;padding-inline:var(--gutter)}
+.gold{background:linear-gradient(100deg,var(--gold),#ffd97a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cyan{background:linear-gradient(100deg,var(--cyan),var(--blue));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* ---------- fixed chrome ------------------------------------------------ */
+.bar{position:fixed;inset:0 0 auto 0;height:4px;background:rgba(255,255,255,.07);z-index:90}
+.bar i{display:block;height:100%;transform:scaleX(0);transform-origin:right center;
+  background:linear-gradient(90deg,var(--cyan),var(--blue) 55%,var(--gold))}
+.chip{position:fixed;bottom:20px;right:var(--gutter);z-index:90;display:flex;align-items:center;gap:10px;
+  padding:9px 16px 9px 20px;border-radius:999px;font-size:15px;font-weight:600;
+  border:1px solid var(--line);background:rgba(8,11,20,.66);backdrop-filter:blur(14px)}
+.chip b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;font-size:14px;color:#06070c;
+  background:linear-gradient(135deg,var(--cyan),var(--gold))}
+
+/* ---------- ambient background ------------------------------------------ */
+.aura{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
+.blob{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform}
+.blob.b1{width:78vmax;height:78vmax;top:-30vmax;right:-26vmax;background:rgba(59,130,246,.40)}
+.blob.b2{width:62vmax;height:62vmax;bottom:-24vmax;left:-22vmax;background:rgba(67,217,255,.22)}
+.blob.b3{width:52vmax;height:52vmax;top:38%;left:30%;background:rgba(240,180,41,.16)}
+.grain{position:fixed;inset:0;z-index:-1;opacity:.055;pointer-events:none;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* ---------- hero -------------------------------------------------------- */
+.hero{min-height:100svh;display:grid;place-items:center;text-align:center;overflow:hidden}
+.hero .inner{padding-block:14vh 10vh}
+.eyebrow{font-size:clamp(13px,3.4vw,18px);font-weight:700;letter-spacing:.14em;color:var(--cyan);margin-bottom:clamp(20px,4vw,30px)}
+.mark{width:clamp(96px,26vw,150px);aspect-ratio:1;margin:0 auto clamp(26px,6vw,44px);position:relative;display:grid;place-items:center}
+.mark .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,var(--cyan),var(--blue),var(--gold),var(--cyan))}
+.mark .hole{position:absolute;inset:5px;border-radius:50%;background:#070a12}
+.mark span{position:relative;font-size:clamp(40px,11vw,64px);font-weight:700;
+  background:linear-gradient(140deg,var(--cyan),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero h1{font-size:clamp(52px,15vw,132px);font-kerning:none}
+.hero .rule{width:clamp(90px,22vw,160px);height:5px;border-radius:99px;margin:clamp(22px,5vw,34px) auto;
+  transform:scaleX(0);transform-origin:right center;background:linear-gradient(90deg,var(--cyan),var(--blue),var(--gold))}
+.hero .sub{font-size:clamp(17px,4.6vw,26px);color:var(--muted);max-width:22ch;margin-inline:auto}
+.hint{margin-top:clamp(36px,9vw,64px);font-size:13px;letter-spacing:.18em;color:var(--muted);display:grid;gap:12px;justify-items:center}
+.hint i{display:block;width:1px;height:52px;background:linear-gradient(180deg,var(--cyan),transparent)}
+html:not(.render) .hint i{animation:drop 2.1s ease-in-out infinite}
+@keyframes drop{0%,100%{transform:scaleY(.35);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}}
+
+/* ---------- statement --------------------------------------------------- */
+.statement{padding-block:clamp(90px,22vh,190px)}
+.statement h2{font-size:clamp(38px,10.5vw,96px);max-width:16ch}
+.statement .word{opacity:.16}
+
+/* ---------- stacking service cards -------------------------------------- */
+.services{padding-block:clamp(40px,10vh,90px) clamp(90px,20vh,170px)}
+.kicker{font-size:clamp(12px,3.2vw,15px);font-weight:700;letter-spacing:.16em;color:var(--gold);margin-bottom:clamp(26px,6vw,44px)}
+.cards{display:grid;gap:clamp(18px,4vw,26px)}
+.card{position:sticky;top:calc(14vh + var(--i) * 14px);border-radius:clamp(22px,5vw,34px);
+  border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(18px);
+  padding:clamp(26px,7vw,50px);will-change:transform;
+  box-shadow:0 30px 90px -40px rgba(0,0,0,.9)}
+.card .no{font-size:clamp(13px,3.4vw,16px);font-weight:700;color:var(--gold);letter-spacing:.1em;margin-bottom:14px}
+.card h3{font-size:clamp(26px,7vw,44px);margin-bottom:clamp(10px,2.6vw,16px)}
+.card p{font-size:clamp(15px,4.2vw,21px);color:var(--muted);max-width:34ch}
+.card .ic{position:absolute;top:clamp(22px,6vw,42px);left:clamp(22px,6vw,42px);width:clamp(46px,12vw,66px);aspect-ratio:1;
+  border-radius:30%;display:grid;place-items:center;font-size:clamp(22px,6vw,32px);
+  border:1px solid var(--line);background:linear-gradient(140deg,rgba(59,130,246,.35),rgba(240,180,41,.14))}
+
+/* ---------- pinned process --------------------------------------------- */
+.process{min-height:100svh;display:grid;align-content:center;padding-block:clamp(60px,12vh,110px);overflow:hidden}
+.steps{display:grid;gap:clamp(26px,7vw,44px);position:relative;padding-inline-start:clamp(28px,8vw,46px)}
+.rail{position:absolute;inset-block:6px;inset-inline-start:clamp(2px,1vw,8px);width:2px;background:var(--line)}
+.rail i{display:block;height:100%;transform:scaleY(0);transform-origin:top center;
+  background:linear-gradient(180deg,var(--cyan),var(--gold))}
+.step{display:grid;gap:8px}
+.step .n{font-size:clamp(12px,3.2vw,14px);font-weight:700;letter-spacing:.14em;color:var(--cyan)}
+.step h3{font-size:clamp(23px,6.2vw,38px)}
+.step p{font-size:clamp(14px,4vw,19px);color:var(--muted);max-width:32ch}
+
+/* ---------- marquee ----------------------------------------------------- */
+.marquee{padding-block:clamp(34px,8vh,68px);overflow:hidden;border-block:1px solid var(--line);
+  display:flex;justify-content:center}
+.track{display:flex;flex:0 0 auto;gap:clamp(24px,6vw,48px);width:max-content;will-change:transform}
+.track span{font-size:clamp(24px,7vw,56px);font-weight:900;letter-spacing:-.04em;color:rgba(255,255,255,.14);white-space:nowrap}
+.track span:nth-child(even){color:transparent;-webkit-text-stroke:1px rgba(240,180,41,.5)}
+
+/* ---------- cta --------------------------------------------------------- */
+.cta{min-height:100svh;display:grid;place-items:center;text-align:center;padding-block:clamp(80px,18vh,150px)}
+.cta h2{font-size:clamp(44px,12.5vw,110px);margin-bottom:clamp(26px,6vw,42px)}
+.url{display:inline-block;direction:ltr;font-size:clamp(16px,4.4vw,24px);font-weight:600;padding:14px 30px;
+  border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.045);margin-bottom:clamp(24px,6vw,38px)}
+.btn{position:relative;display:inline-block;font-size:clamp(18px,5vw,26px);font-weight:800;color:#06070c;
+  padding:clamp(16px,4.6vw,24px) clamp(36px,10vw,66px);border-radius:999px;text-decoration:none;will-change:transform;
+  background:linear-gradient(120deg,var(--cyan),var(--blue) 55%,var(--gold));
+  box-shadow:0 24px 70px -24px rgba(59,130,246,.85)}
+.note{margin-top:clamp(18px,4.4vw,26px);font-size:clamp(13px,3.6vw,17px);color:var(--muted)}
+footer{padding:clamp(30px,7vw,50px) 0 clamp(60px,13vw,96px);border-top:1px solid var(--line);text-align:center}
+.fine{font-size:clamp(11px,3vw,13px);line-height:1.6;color:rgba(255,255,255,.4);max-width:44ch;margin-inline:auto}
+
+@media (prefers-reduced-motion:reduce){
+  .statement .word{opacity:1}
+  .hint i{animation:none}
+  .bar i{transform:scaleX(1)}
+}
+</style>
+
+<div class="aura" aria-hidden="true">
+  <div class="blob b1" data-speed="18"></div>
+  <div class="blob b2" data-speed="-12"></div>
+  <div class="blob b3" data-speed="26"></div>
+</div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="bar" aria-hidden="true"><i></i></div>
+<div class="chip"><b>₪</b><span>יפתח ונגר</span></div>
+
+<main>
+  <section class="hero" id="hero">
+    <div class="wrap inner">
+      <div class="mark" aria-hidden="true"><i class="ring"></i><i class="hole"></i><span>₪</span></div>
+      <p class="eyebrow" data-reveal>ייעוץ והדרכת השקעות</p>
+      <h1 id="heroTitle">יפתח ונגר</h1>
+      <div class="rule" aria-hidden="true"></div>
+      <p class="sub" data-reveal>החלטות פיננסיות הן לא ניחוש — הן תוכנית.</p>
+      <p class="hint" aria-hidden="true"><i></i>גללו</p>
+    </div>
+  </section>
+
+  <section class="statement">
+    <div class="wrap">
+      <h2 id="statement">הכסף שלכם ראוי לליווי <em class="gold" style="font-style:normal">מקצועי.</em></h2>
+    </div>
+  </section>
+
+  <section class="services">
+    <div class="wrap">
+      <p class="kicker" data-reveal>תחומי הייעוץ</p>
+      <div class="cards">
+        <article class="card" style="--i:0">
+          <div class="ic" aria-hidden="true">📈</div>
+          <p class="no">01</p>
+          <h3>ייעוץ והדרכת השקעות</h3>
+          <p>בונים אסטרטגיה שמתאימה לכם — לצרכים, לטווח ולרמת הסיכון שאתם באמת מוכנים לחיות איתה.</p>
+        </article>
+        <article class="card" style="--i:1">
+          <div class="ic" aria-hidden="true">🏠</div>
+          <p class="no">02</p>
+          <h3>משכנתאות ומיחזור</h3>
+          <p>בדיקה מחדש של התמהיל מול השוק היום — ולעיתים קרובות חיסכון שמצטבר לאורך שנים.</p>
+        </article>
+        <article class="card" style="--i:2">
+          <div class="ic" aria-hidden="true">🏢</div>
+          <p class="no">03</p>
+          <h3>אשראי עסקי</h3>
+          <p>מימון נכון לעסק, בתנאים שמתאימים לו — ובלי להיכנס להתחייבויות שלא צריך.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="process" id="process">
+    <div class="wrap">
+      <p class="kicker" data-reveal>איך זה עובד</p>
+      <div class="steps">
+        <div class="rail" aria-hidden="true"><i></i></div>
+        <div class="step"><p class="n">שלב 01</p><h3>שיחת היכרות</h3><p>מבינים מאיפה אתם מגיעים ומה אתם רוצים שיקרה עם הכסף.</p></div>
+        <div class="step"><p class="n">שלב 02</p><h3>מיפוי מלא</h3><p>עוברים על התמונה הפיננסית כולה — נכסים, התחייבויות והזדמנויות.</p></div>
+        <div class="step"><p class="n">שלב 03</p><h3>תוכנית ומעקב</h3><p>יוצאים לדרך עם תוכנית ברורה, ונשארים בקשר כדי לעדכן אותה עם הזמן.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="marquee" aria-hidden="true">
+    <div class="track">
+      <span>תיק השקעות</span><span>מיחזור משכנתא</span><span>אשראי עסקי</span><span>הערכות שווי</span>
+      <span>תיק השקעות</span><span>מיחזור משכנתא</span><span>אשראי עסקי</span><span>הערכות שווי</span>
+      <span>תיק השקעות</span><span>מיחזור משכנתא</span><span>אשראי עסקי</span><span>הערכות שווי</span>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2 id="ctaTitle">בואו נדבר</h2>
+      <p><span class="url">iftach-advise.com</span></p>
+      <p><a class="btn" id="magnet" href="https://iftach-advise.com/">לתיאום פגישה</a></p>
+      <p class="note">פגישת היכרות ראשונה</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <p class="fine">האמור אינו מהווה ייעוץ השקעות ואינו תחליף לייעוץ אישי המתחשב בנתוניו ובצרכיו של כל אדם.</p>
+    </div>
+  </footer>
+</main>
+
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="vendor/SplitText.min.js"></script>
+<script src="vendor/lenis.min.js"></script>
+<script>
+/* ===========================================================================
+   Scroll choreography.
+
+   Two modes:
+   - interactive: Lenis smooth scroll driven by GSAP's single ticker.
+   - render (?render=1): no Lenis, no time-based motion. The frame renderer sets
+     scrollY itself, so every frame must depend on scroll position alone.
+   ======================================================================== */
+gsap.registerPlugin(ScrollTrigger, SplitText);
+
+const RENDER = new URLSearchParams(location.search).has('render');
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (RENDER) document.documentElement.classList.add('render');
+
+/** Brand motion tokens — one personality across the whole page. */
+const MOTION = {
+  ease: { enter: 'power3.out', exit: 'power2.in', move: 'power2.inOut', scrub: 'none' },
+  dur:  { micro: .15, base: .3, large: .5, hero: .9 },
+  stagger: { tight: .04, base: .08, loose: .12 },
+};
+
+/* --- smooth scroll: one RAF loop, ScrollTrigger reads position from Lenis --- */
+if (!RENDER && !REDUCED) {
+  const lenis = new Lenis({ duration: 1.15, anchors: true });
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add((time) => lenis.raf(time * 1000));
+  gsap.ticker.lagSmoothing(0);
+  window.__lenis = lenis;
+}
+
+const build = () => {
+  /* progress bar — scroll position, not time */
+  gsap.to('.bar i', {
+    scaleX: 1, ease: MOTION.ease.scrub,
+    scrollTrigger: { start: 0, end: 'max', scrub: true },
+  });
+
+  if (REDUCED) return;   // everything below is non-essential motion
+
+  /* Entrance reveals differ per mode. Interactively they fire once on enter with
+     an ease-out curve. While filming there is no reliable wall clock between
+     frames, so the same reveal is scrubbed by scroll instead — deterministic,
+     and it still reads as motion in the video. */
+  const enter = (targets, vars, trigger) => gsap.from(targets, {
+    ...vars,
+    ...(RENDER ? { ease: MOTION.ease.scrub } : {}),
+    scrollTrigger: RENDER
+      ? { trigger, start: 'top 88%', end: 'top 52%', scrub: true }
+      : { trigger, start: 'top 72%' },
+  });
+
+  /* --- hero ---------------------------------------------------------------
+     The headline splits per character behind a mask. autoSplit re-splits after
+     the webfont swaps, so the mask never clips the wrong glyph box.          */
+  SplitText.create('#heroTitle', {
+    type: 'chars', mask: 'chars', autoSplit: true, aria: 'auto',
+    onSplit: (self) => RENDER
+      ? gsap.set(self.chars, { yPercent: 0, opacity: 1 })
+      : gsap.from(self.chars, {              // returned → GSAP syncs re-splits
+          yPercent: 118, opacity: 0,
+          duration: MOTION.dur.hero, ease: 'expo.out', stagger: MOTION.stagger.base,
+          delay: .15,
+        }),
+  });
+  if (RENDER) {
+    gsap.set('.hero .rule', { scaleX: 1 });
+  } else {
+    gsap.from('.mark', { scale: .74, opacity: 0, duration: MOTION.dur.hero, ease: 'back.out(1.5)' });
+    gsap.to('.hero .rule', { scaleX: 1, duration: MOTION.dur.large, ease: MOTION.ease.enter, delay: .75 });
+    gsap.from('.hero [data-reveal]', {
+      y: 26, opacity: 0, duration: MOTION.dur.large, ease: MOTION.ease.enter,
+      stagger: MOTION.stagger.loose, delay: .55,
+    });
+  }
+
+  /* hero exit: pinned for one screen while the title drifts up and dims */
+  gsap.timeline({
+    scrollTrigger: { trigger: '.hero', start: 'top top', end: '+=100%', pin: true, scrub: true },
+  })
+    .to('.hero .inner', { yPercent: -14, opacity: .12, ease: MOTION.ease.scrub })
+    .to('.hint', { opacity: 0, ease: MOTION.ease.scrub }, 0);
+
+  /* --- parallax: each layer moves at its own fraction of scroll ----------- */
+  gsap.utils.toArray('.blob').forEach((el) => {
+    gsap.to(el, {
+      yPercent: Number(el.dataset.speed), ease: MOTION.ease.scrub,
+      scrollTrigger: { start: 0, end: 'max', scrub: true },
+    });
+  });
+
+  /* --- statement: words light up as the sentence is read ------------------ */
+  SplitText.create('#statement', {
+    type: 'words', wordsClass: 'word', autoSplit: true, aria: 'auto',
+    onSplit: (self) => gsap.to(self.words, {
+      opacity: 1, ease: MOTION.ease.scrub, stagger: MOTION.stagger.tight,
+      scrollTrigger: { trigger: '#statement', start: 'top 82%', end: 'bottom 55%', scrub: true },
+    }),
+  });
+
+  /* --- services: each card shrinks as the next one covers it -------------- */
+  const cards = gsap.utils.toArray('.card');
+  cards.forEach((card, i) => {
+    if (i === cards.length - 1) return;
+    gsap.to(card, {
+      scale: .93, filter: 'brightness(.72)', ease: MOTION.ease.scrub,
+      scrollTrigger: { trigger: cards[i + 1], start: 'top bottom', end: 'top top', scrub: true },
+    });
+  });
+  enter(cards, { y: 60, opacity: 0, duration: MOTION.dur.large, ease: MOTION.ease.enter, stagger: MOTION.stagger.loose }, '.services');
+
+  /* --- process: pinned; steps arrive one by one while the rail fills ------ */
+  const steps = gsap.utils.toArray('.step');
+  const proc = gsap.timeline({
+    scrollTrigger: { trigger: '.process', start: 'top top', end: '+=140%', pin: true, scrub: true },
+  });
+  proc.to('.rail i', { scaleY: 1, ease: MOTION.ease.scrub }, 0);
+  steps.forEach((step, i) => {
+    // spread the three arrivals across the pinned distance, overlapping slightly
+    proc.from(step, { x: 40, autoAlpha: 0, ease: MOTION.ease.scrub }, i * 0.28);
+  });
+
+  /* --- marquee: driven by scroll so it is identical every render ---------- */
+  gsap.fromTo('.track', { xPercent: -9 }, {
+    xPercent: 9, ease: MOTION.ease.scrub,
+    scrollTrigger: { trigger: '.marquee', start: 'top bottom', end: 'bottom top', scrub: true },
+  });
+
+  /* --- closing ------------------------------------------------------------ */
+  SplitText.create('#ctaTitle', {
+    type: 'chars', mask: 'chars', autoSplit: true, aria: 'auto',
+    onSplit: (self) => gsap.from(self.chars, {
+      yPercent: 118,
+      ...(RENDER
+        ? { ease: MOTION.ease.scrub, stagger: MOTION.stagger.tight,
+            scrollTrigger: { trigger: '.cta', start: 'top 80%', end: 'top 40%', scrub: true } }
+        : { duration: MOTION.dur.large, ease: 'expo.out', stagger: MOTION.stagger.tight,
+            scrollTrigger: { trigger: '.cta', start: 'top 65%' } }),
+    }),
+  });
+  enter('.url, .btn, .note', { y: 30, opacity: 0, duration: MOTION.dur.large, ease: MOTION.ease.enter, stagger: MOTION.stagger.base }, '.cta');
+
+  /* --- pointer-only flourishes ------------------------------------------- */
+  if (!RENDER && matchMedia('(hover:hover)').matches) {
+    const btn = document.querySelector('#magnet');
+    // quickTo reuses one tween instead of spawning a tween per mousemove
+    const mx = gsap.quickTo(btn, 'x', { duration: .4, ease: 'power3' });
+    const my = gsap.quickTo(btn, 'y', { duration: .4, ease: 'power3' });
+    btn.addEventListener('pointermove', (e) => {
+      const r = btn.getBoundingClientRect();
+      mx((e.clientX - (r.left + r.width / 2)) * .28);
+      my((e.clientY - (r.top + r.height / 2)) * .4);
+    });
+    btn.addEventListener('pointerleave', () => { mx(0); my(0); });
+  }
+};
+
+/* Fonts change line boxes and page height, so build after they resolve and
+   refresh once more when everything (images included) has settled. */
+window.__ready = (async () => {
+  await document.fonts.ready;
+  build();
+  ScrollTrigger.refresh();
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return true;
+})();
+
+/* The frame renderer calls this instead of window.scrollTo so ScrollTrigger is
+   guaranteed to have applied the new position before the screenshot. */
+window.__renderSeek = (y) => {
+  window.scrollTo(0, y);
+  ScrollTrigger.update();
+  return new Promise((r) => requestAnimationFrame(() => r(true)));
+};
+</script>
+<!--ARTIFACT:END-->
+</body>
+</html>
