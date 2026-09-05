@@ -22,3 +22,7 @@ coverage/
 
 # Build files
 *.tsbuildinfo
+# Promo video render scratch (the final mp4 + cover are committed)
+promo/out/still-*.png
+promo/out/bench.mp4
+promo/out/preview.mp4
