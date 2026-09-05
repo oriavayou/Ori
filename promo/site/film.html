@@ -68,6 +68,14 @@ body{display:grid;place-items:center;min-height:100vh}
 .end .url{direction:ltr;font-size:38px;font-weight:500;letter-spacing:.02em;margin-top:54px;color:var(--paper)}
 .end .cta{font-size:40px;font-weight:700;color:var(--ink);background:var(--gold);padding:26px 64px;margin-top:40px}
 .end .fine{margin-top:56px;font-size:22px;line-height:1.6;color:rgba(242,237,228,.34);max-width:42ch}
+.sign{position:absolute;inset:0;overflow:hidden}
+.sign img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;will-change:transform}
+.sign .edge{position:absolute;inset:0;box-shadow:inset 0 0 200px 80px rgba(10,10,11,.85);
+  background:linear-gradient(180deg,var(--ink) 0%,transparent 22%,transparent 78%,var(--ink) 100%)}
+.end .signcard{width:min(680px,84%);border:1px solid rgba(242,237,228,.16);overflow:hidden;
+  margin-bottom:34px;box-shadow:0 50px 100px -60px #000}
+.end .signcard img{width:100%;display:block}
+
 .logo{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:30px;padding:0 110px}
 .logo img{width:min(920px,92%);height:auto;display:block}
 .logo .wordmark{font-size:110px;font-weight:900;letter-spacing:-.05em;color:var(--gold)}
@@ -154,6 +162,8 @@ const DATA = window.__CONTENT || { shots: [] };
 /** Put the brand's logo at promo/brand/logo.png (white background is fine —
  *  run tools/prep-logo.mjs to knock it out). Everything falls back to type. */
 const LOGO = '/brand/logo-alpha.png';
+/** The lit-sign artwork, used full frame at the turn and framed at the close. */
+const SIGN = '/brand/logo-sign.png';
 const stage = document.getElementById('stage');
 const root = document.getElementById('scenes');
 const el = (tag, cls, html) => {
@@ -190,6 +200,14 @@ async function boot() {
   const host = (() => { try { return new URL(DATA.site).host; } catch { return cta.url || ''; } })();
   document.getElementById('corner').textContent = brand.name || '';
 
+  /* The through-line: noise resolving into one rising curve. Created before the
+     scenes so that a scene which needs the line out of its way still wins. */
+  const total = SCRIPT.reduce((a, sc) => a + sc.hold, 0);
+  const CALM = 'M-40,190 C120,186 200,180 300,168 C420,152 520,132 640,110 C760,88 880,72 1120,54';
+  master.to('#line', { morphSVG: CALM, duration: total * .58, ease: 'power1.inOut' }, total * .18)
+        .fromTo('.motif', { y: 0, opacity: .9 }, { y: -60, opacity: .55, duration: total, ease: 'none' }, 0)
+        .to('.motif', { y: 300, opacity: .35, duration: 1.8, ease: 'brand' }, total - 4.6);
+
   let t = 0;
   const OUT = .55;                       // every scene leaves the same way
 
@@ -223,27 +241,33 @@ async function boot() {
     }
 
     if (sc.type === 'logo') {
-      const wrap = el('div', 'logo');
+      // The brand moment: the through-line clears and the lit sign fills the
+      // frame. It is artwork, not a flat asset, so it is used as a shot.
+      const wrap = el('div', 'sign');
       const img = el('img');
-      img.src = LOGO;
+      img.src = SIGN;
       img.alt = brand.name || '';
-      const tag = el('div', 'tag', sc.tag || brand.tagline || '');
-      img.onerror = () => {           // no logo file: fall back to type
-        img.remove();
-        wrap.prepend(el('div', 'wordmark', brand.name || ''));
+      const edge = el('div', 'edge');
+      wrap.append(img, edge);
+      const fallback = el('div', 'logo');
+      img.onerror = () => {
+        wrap.remove();
+        fallback.append(el('div', 'wordmark', brand.name || ''),
+                        el('div', 'tag', sc.tag || brand.tagline || ''));
+        root.appendChild(fallback);
+        gsap.set(fallback, { autoAlpha: 0 });
+        master.set(fallback, { autoAlpha: 1 }, start)
+              .to(fallback, { autoAlpha: 0, duration: OUT }, end - OUT);
       };
-      img.onload = () => tag.remove(); // the logo already says it
-      wrap.append(img, tag);
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
-      // the through-line hands off to the mark: it rises to meet it and clears
       master.set(wrap, { autoAlpha: 1 }, start)
-            .to('.motif', { y: -520, opacity: 0, duration: .7, ease: 'brand' }, start - .35)
-            .from(img, { scale: .94, autoAlpha: 0, duration: 1.1, ease: 'brand' }, start + .1)
-            .from(wrap.querySelector('.tag'), { y: 22, autoAlpha: 0, duration: .7, ease: 'brand' }, start + .55)
+            .to('.motif', { y: -520, opacity: 0, duration: .7, ease: 'brand' }, start - .4)
+            .from(img, { autoAlpha: 0, duration: .9, ease: 'brand' }, start)
+            .fromTo(img, { scale: 1.07 }, { scale: 1, duration: sc.hold + .6, ease: 'none' }, start)
             .to(wrap, { autoAlpha: 0, duration: OUT, ease: 'power2.in' }, end - OUT)
             .set(wrap, { autoAlpha: 0 }, end)
-            .to('.motif', { y: 0, opacity: .9, duration: .8, ease: 'brand' }, end - .3);
+            .to('.motif', { y: 0, opacity: .9, duration: .8, ease: 'brand' }, end - .2);
     }
 
     if (sc.type === 'creds' || sc.type === 'list') {
@@ -331,38 +355,31 @@ async function boot() {
 
     if (sc.type === 'end') {
       const wrap = el('div', 'end');
-      const mark = el('img', 'mark');
-      mark.src = LOGO;
+      const card = el('div', 'signcard');
+      const mark = el('img');
+      mark.src = SIGN;
       mark.alt = brand.name || '';
+      card.appendChild(mark);
       const h1 = el('h1', null, '');
-      mark.onerror = () => { mark.remove(); h1.textContent = brand.name || ''; };
+      mark.onerror = () => { card.remove(); h1.textContent = brand.name || ''; };
       mark.onload = () => sub.remove();
       const sub = el('div', 'sub', brand.tagline || '');
       // (removed when the logo image loads — it carries the tagline itself)
       const url = el('div', 'url', cta.url || host);
       const btn = el('div', 'cta', cta.button || 'לתיאום פגישה');
       const fine = cta.disclaimer ? el('p', 'fine', cta.disclaimer) : null;
-      wrap.append(mark, h1, sub, url, btn);
+      wrap.append(card, h1, sub, url, btn);
       if (fine) wrap.append(fine);
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from([mark, h1], { yPercent: 18, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
+            .from([card, h1], { y: 30, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
             .from([sub, url, btn, fine].filter(Boolean),
               { y: 28, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .14 }, start + .3);
     }
 
     t = end;
   }
-
-  const total = t;
-
-  /* the through-line: noise that resolves into one rising curve, then settles
-     under the closing card */
-  const CALM = 'M-40,190 C120,186 200,180 300,168 C420,152 520,132 640,110 C760,88 880,72 1120,54';
-  master.to('#line', { morphSVG: CALM, duration: total * .58, ease: 'power1.inOut' }, total * .18)
-        .fromTo('.motif', { y: 0, opacity: .9 }, { y: -60, opacity: .55, duration: total, ease: 'none' }, 0)
-        .to('.motif', { y: 300, opacity: .35, duration: 1.8, ease: 'brand' }, total - 4.6);
 
   await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
   await document.fonts.ready;
