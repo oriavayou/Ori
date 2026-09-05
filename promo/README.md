@@ -45,7 +45,7 @@ promo/
   tools/site-promo.mjs← מצלם את האתר האמיתי ועוטף אותו בפתיח וסיום
   tools/lib.mjs
   tools/build-fonts.mjs
-  out/                ← הפלט: promo-9x16.mp4 + cover.png
+  out/                ← הפלט של הרינדורים (לא נשמר בגיט)
 ```
 
 ## הרצה
