@@ -23,6 +23,9 @@ const WANTED = [
   ['gsap', 'dist/gsap.min.js'],
   ['gsap', 'dist/ScrollTrigger.min.js'],
   ['gsap', 'dist/SplitText.min.js'],
+  ['gsap', 'dist/CustomEase.min.js'],
+  ['gsap', 'dist/DrawSVGPlugin.min.js'],
+  ['gsap', 'dist/MorphSVGPlugin.min.js'],
   ['lenis', 'dist/lenis.min.js'],
 ];
 

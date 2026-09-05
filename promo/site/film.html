@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Film · render target</title>
+<link rel="stylesheet" href="../fonts.css">
+<style>
+/* =============================================================================
+   ART DIRECTION
+   Ink ground, warm ivory type, one muted gold accent. No gradients on type, no
+   glass, no neon: the only recurring graphic is a hairline that runs through the
+   whole film — jagged while the copy talks about improvising, resolving into a
+   calm rising curve by the close.
+   Rhythm: statements hold long and still; the services burst is deliberately
+   fast, so the slowness around it reads as a choice.
+   ========================================================================== */
+:root{
+  --ink:#0A0A0B; --paper:#F2EDE4; --dim:rgba(242,237,228,.52);
+  --gold:#C9A24B; --rule:rgba(242,237,228,.14);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#000;overflow:hidden}
+body{display:grid;place-items:center;min-height:100vh}
+.stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:var(--ink);color:var(--paper);
+  font-family:'Rubik',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+
+.warm{position:absolute;inset:0;background:
+  radial-gradient(120% 70% at 78% 12%,rgba(201,162,75,.12),transparent 60%),
+  radial-gradient(90% 60% at 10% 92%,rgba(242,237,228,.05),transparent 60%)}
+.vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 45%,rgba(0,0,0,.72) 100%)}
+.grain{position:absolute;inset:0;opacity:.055;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* the through-line */
+.motif{position:absolute;left:0;right:0;bottom:300px;height:300px;overflow:visible}
+.motif svg{width:100%;height:100%;display:block;overflow:visible}
+.motif path{fill:none;stroke:var(--gold);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;
+  vector-effect:non-scaling-stroke}
+
+/* type scenes */
+.scene{position:absolute;inset:0;padding:0 96px;display:grid;align-content:center}
+.say{font-weight:900;font-size:104px;line-height:1.14;letter-spacing:-.05em;text-wrap:balance}
+.say .m{display:block;overflow:hidden}
+.say em{font-style:normal;color:var(--gold)}
+.small{font-size:34px;font-weight:400;color:var(--dim);letter-spacing:-.01em}
+.eyebrow{font-size:26px;font-weight:500;letter-spacing:.24em;color:var(--gold)}
+.hr{height:1px;background:var(--rule);transform:scaleX(0);transform-origin:right center}
+
+/* proof scenes: the site, framed like a plate in a print piece */
+.plate{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:44px;padding:0 96px}
+.frame{position:relative;overflow:hidden;background:#111;border:1px solid rgba(242,237,228,.18);
+  box-shadow:0 60px 120px -60px #000}
+.frame.tall{width:660px;height:1160px;border-radius:10px}
+.frame.wide{width:888px;height:560px;border-radius:8px}
+.frame img{position:absolute;top:0;left:0;width:100%;display:block}
+.plate .label{font-size:32px;font-weight:500;color:var(--dim);letter-spacing:-.01em;text-align:center}
+.plate .label b{color:var(--paper);font-weight:700}
+
+/* the fast services burst */
+.burst{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:30px}
+.burst .word{font-size:118px;font-weight:900;letter-spacing:-.05em}
+.burst .frame{width:420px;height:700px;border-radius:8px}
+
+/* closing */
+.end{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;text-align:center;padding:0 96px}
+.end h1{font-size:96px;font-weight:900;letter-spacing:-.045em}
+.end .sub{font-size:36px;color:var(--dim);margin-top:22px}
+.end .url{direction:ltr;font-size:38px;font-weight:500;letter-spacing:.02em;margin-top:54px;color:var(--paper)}
+.end .cta{font-size:40px;font-weight:700;color:var(--ink);background:var(--gold);padding:26px 64px;margin-top:40px}
+.end .fine{margin-top:56px;font-size:22px;line-height:1.6;color:rgba(242,237,228,.34);max-width:42ch}
+.corner{position:absolute;bottom:74px;right:96px;font-size:26px;font-weight:500;color:var(--dim);letter-spacing:.02em}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="warm"></div>
+  <div class="motif">
+    <svg viewBox="0 0 1080 300" preserveAspectRatio="none">
+      <path id="line"
+        d="M-40,150 L60,150 L110,92 L150,206 L196,66 L240,214 L286,120 L330,190 L378,74 L424,196 L470,104 L520,186 L570,120 L620,176 L680,110 L740,168 L800,126 L870,158 L940,136 L1120,150"/>
+    </svg>
+  </div>
+  <div id="scenes"></div>
+  <div class="corner" id="corner"></div>
+  <div class="vig"></div>
+  <div class="grain"></div>
+</div>
+
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/CustomEase.min.js"></script>
+<script src="vendor/MorphSVGPlugin.min.js"></script>
+<script>
+/* ===========================================================================
+   THE SCRIPT. Edit the copy here — everything else follows from it.
+   `shot` picks a page from promo/shots/shots.json by index.
+   ======================================================================== */
+const SCRIPT = [
+  { type: 'say',   hold: 4.2, lines: ['כסף לא אוהב אלתור.'] },
+  { type: 'say',   hold: 4.4, lines: ['כל שקל שנשאר לגורל', 'מישהו אחר מנהל אותו.'] },
+  { type: 'plate', hold: 4.4, shot: 0, view: 'phone',
+    label: 'יפתח ונגר · ייעוץ והדרכת השקעות', kicker: 'האתר' },
+  { type: 'say',   hold: 4.2, lines: ['אני לא מבטיח תשואות.', 'אני בונה <em>סדר</em>.'] },
+  { type: 'burst', hold: 5.1, words: ['השקעות', 'משכנתאות', 'אשראי עסקי'] },
+  { type: 'plate', hold: 4.2, shot: 1, view: 'desktop',
+    label: 'תהליך אחד, ברור מהשיחה הראשונה', kicker: 'איך זה עובד' },
+  { type: 'say',   hold: 4.0, lines: ['אתם מחליטים.', 'אני דואג שתחליטו', 'עם כל המידע.'] },
+  { type: 'end',   hold: 4.5 },
+];
+
+gsap.registerPlugin(CustomEase, MorphSVGPlugin);
+/** One brand curve: a long, weighted settle. Used for every entrance. */
+CustomEase.create('brand', 'M0,0 C0.14,0 0.06,1 1,1');
+
+const DATA = window.__CONTENT || { shots: [] };
+const stage = document.getElementById('stage');
+const root = document.getElementById('scenes');
+const el = (tag, cls, html) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html != null) n.innerHTML = html;
+  return n;
+};
+const master = gsap.timeline({ paused: true });
+
+/** A page image inside a plate frame, with its pan distance worked out. */
+function plate(shotIndex, view, kind) {
+  const shots = DATA.shots || [];
+  if (!shots.length) return null;
+  const s = shots[shotIndex % shots.length];
+  const v = s.views[view] || s.views.phone || s.views.desktop;
+  const frame = el('div', `frame ${kind}`);
+  const img = el('img');
+  img.src = `/shots/${v.file}`;
+  img.alt = s.title || '';
+  frame.appendChild(img);
+  const box = kind === 'wide' ? { w: 888, h: 560 } : kind === 'tall' ? { w: 660, h: 1160 } : { w: 420, h: 700 };
+  const shown = box.w * (v.h / v.w);
+  return { frame, img, pan: Math.max(0, shown - box.h) };
+}
+
+async function boot() {
+  let brand = { name: '', tagline: '', mark: '₪' }, cta = {};
+  try {
+    const c = await (await fetch('/content.json')).json();
+    brand = { ...brand, ...(c.brand || {}) };
+    cta = (c.scenes || []).find((x) => x.type === 'cta') || {};
+  } catch {}
+  const host = (() => { try { return new URL(DATA.site).host; } catch { return cta.url || ''; } })();
+  document.getElementById('corner').textContent = brand.name || '';
+
+  let t = 0;
+  const OUT = .55;                       // every scene leaves the same way
+
+  for (const [i, sc] of SCRIPT.entries()) {
+    const start = t, end = t + sc.hold;
+
+    if (sc.type === 'say') {
+      const wrap = el('div', 'scene');
+      const h = el('div', 'say');
+      const masks = sc.lines.map((line) => {
+        const m = el('span', 'm');
+        const inner = el('span', null, line);
+        inner.style.display = 'block';
+        m.appendChild(inner);
+        h.appendChild(m);
+        return inner;
+      });
+      const rule = el('div', 'hr');
+      rule.style.marginTop = '54px';
+      wrap.append(h, rule);
+      root.appendChild(wrap);
+      master.set(wrap, { autoAlpha: 1 }, start)
+            .from(masks, { yPercent: 112, duration: 1.05, ease: 'brand', stagger: .12 }, start)
+            .to(rule, { scaleX: 1, duration: .9, ease: 'brand' }, start + .35)
+            // the whole block drifts a few pixels while it is held: stillness, not freeze
+            .fromTo(wrap, { y: 14 }, { y: -14, duration: sc.hold, ease: 'none' }, start)
+            .to(wrap, { autoAlpha: 0, y: -46, duration: OUT, ease: 'power2.in' }, end - OUT)
+            .set(wrap, { autoAlpha: 0 }, end);
+      gsap.set(wrap, { autoAlpha: 0 });
+    }
+
+    if (sc.type === 'plate') {
+      const p = plate(sc.shot, sc.view, sc.view === 'desktop' ? 'wide' : 'tall');
+      const wrap = el('div', 'plate');
+      const kick = el('div', 'eyebrow', sc.kicker || '');
+      const label = el('div', 'label', sc.label || '');
+      if (p) wrap.append(kick, p.frame, label); else wrap.append(kick, label);
+      root.appendChild(wrap);
+      gsap.set(wrap, { autoAlpha: 0 });
+      master.set(wrap, { autoAlpha: 1 }, start)
+            .from([kick, label], { y: 26, autoAlpha: 0, duration: .8, ease: 'brand', stagger: .1 }, start + .2);
+      if (p) {
+        master.fromTo(p.frame,
+          { clipPath: 'inset(0% 0% 100% 0%)' },
+          { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.1, ease: 'brand' }, start)
+          .fromTo(p.frame, { scale: 1.04 }, { scale: 1, duration: sc.hold, ease: 'none' }, start)
+          .fromTo(p.img, { y: 0 }, { y: -p.pan * .55, duration: sc.hold - .3, ease: 'none' }, start + .2);
+      }
+      master.to(wrap, { autoAlpha: 0, duration: OUT, ease: 'power2.in' }, end - OUT)
+            .set(wrap, { autoAlpha: 0 }, end);
+    }
+
+    if (sc.type === 'burst') {
+      const each = sc.hold / sc.words.length;
+      sc.words.forEach((w, k) => {
+        // deliberately typographic: after two image plates, three words land hard
+        const wrap = el('div', 'burst');
+        const num = el('div', 'eyebrow', `0${k + 1}`);
+        const word = el('div', 'word', w);
+        const rule = el('div', 'hr');
+        rule.style.width = '340px';
+        wrap.append(num, word, rule);
+        root.appendChild(wrap);
+        gsap.set(wrap, { autoAlpha: 0 });
+        const s0 = start + k * each;
+        master.set(wrap, { autoAlpha: 1 }, s0)
+              .from(word, { yPercent: 45, autoAlpha: 0, duration: .5, ease: 'brand' }, s0)
+              .from(num, { autoAlpha: 0, duration: .3 }, s0 + .08)
+              .to(rule, { scaleX: 1, duration: .45, ease: 'brand' }, s0 + .15)
+              .to(wrap, { autoAlpha: 0, duration: .22, ease: 'power2.in' }, s0 + each - .24)
+              .set(wrap, { autoAlpha: 0 }, s0 + each - .01);
+      });
+    }
+
+    if (sc.type === 'end') {
+      const wrap = el('div', 'end');
+      const h1 = el('h1', null, brand.name || '');
+      const sub = el('div', 'sub', brand.tagline || '');
+      const url = el('div', 'url', cta.url || host);
+      const btn = el('div', 'cta', cta.button || 'לתיאום פגישה');
+      const fine = cta.disclaimer ? el('p', 'fine', cta.disclaimer) : null;
+      wrap.append(h1, sub, url, btn);
+      if (fine) wrap.append(fine);
+      root.appendChild(wrap);
+      gsap.set(wrap, { autoAlpha: 0 });
+      master.set(wrap, { autoAlpha: 1 }, start)
+            .from(h1, { yPercent: 30, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
+            .from([sub, url, btn, fine].filter(Boolean),
+              { y: 28, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .14 }, start + .3);
+    }
+
+    t = end;
+  }
+
+  const total = t;
+
+  /* the through-line: noise that resolves into one rising curve, then settles
+     under the closing card */
+  const CALM = 'M-40,190 C120,186 200,180 300,168 C420,152 520,132 640,110 C760,88 880,72 1120,54';
+  master.to('#line', { morphSVG: CALM, duration: total * .58, ease: 'power1.inOut' }, total * .18)
+        .fromTo('.motif', { y: 0, opacity: .9 }, { y: -60, opacity: .55, duration: total, ease: 'none' }, 0)
+        .to('.motif', { y: 300, opacity: .35, duration: 1.8, ease: 'brand' }, total - 4.6);
+
+  await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+  await document.fonts.ready;
+
+  window.__duration = total;
+  master.time(0);
+  return true;
+}
+
+window.__ready = boot();
+window.__seek = (t) => { master.time(t); };
+</script>
+</body>
+</html>
