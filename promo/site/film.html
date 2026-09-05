@@ -127,30 +127,35 @@ body{display:grid;place-items:center;min-height:100vh}
    `shot` picks a page from promo/shots/shots.json by index.
    ======================================================================== */
 const SCRIPT = [
-  // HOOK — the one question that separates an objective adviser from a seller
+  // HOOK — the question that separates an objective adviser from a seller
   { type: 'hook',  hold: 4.0, lines: ['מי משלם', 'ליועץ שלכם?'] },
   { type: 'say',   hold: 4.0, lines: ['כשהייעוץ תלוי במוצר שנמכר לכם,', 'הוא כבר לא באמת <em>שלכם</em>.'] },
-  // TURN — the line becomes his logo
-  { type: 'logo',  hold: 3.6, tag: 'ייעוץ השקעות וייעוץ פנסיוני אובייקטיבי' },
+  // TURN — the through-line clears and the lit sign fills the frame
+  { type: 'logo',  hold: 3.6, tag: 'ייעוץ פיננסי חכם' },
   // CREDIBILITY
   { type: 'creds', hold: 4.0, items: [
       ['01', 'יועץ השקעות בעל רישיון'],
       ['02', 'יועץ פנסיוני'],
       ['03', 'כלכלן ואקטואר'],
   ] },
-  { type: 'plate', hold: 3.6, shot: 0, view: 'phone', kicker: 'האתר', label: 'iftach-advise.com' },
-  // FEATURES
-  { type: 'list',  hold: 5.4, kicker: 'מה נכנס לתמונה', items: [
-      'ייעוץ והדרכת השקעות',
+  // his three principles, in his own words, shown on his own site
+  { type: 'plate', hold: 3.8, shot: 1, view: 'phone',
+    kicker: 'שלושה עקרונות', label: 'תכנון לטווח ארוך · <b>שקיפות מלאה</b> · גישה אישית' },
+  { type: 'say',   hold: 3.6, lines: ['תהליך ברור.', 'בלי ריביות חבויות.'] },
+  // FEATURES — the real service list
+  { type: 'list',  hold: 5.6, kicker: 'מה נכנס לתמונה', items: [
+      'ייעוץ השקעות',
       'ייעוץ פנסיוני',
-      'משכנתאות ומיחזור',
-      'אשראי עסקי והלוואות בערבות מדינה',
-      'הערכות שווי ותחשיבים אקטואריים',
+      'ייעוץ אשראי עסקי והלוואות בערבות מדינה',
+      'מחזור משכנתאות',
+      'חוות דעת כלכליות והערכות שווי',
+      'גישור ובוררות עסקית',
   ] },
+  { type: 'plate', hold: 3.6, shot: 2, view: 'phone',
+    kicker: 'חדשנות פיננסית', label: 'ניתוח נתונים חי — לא תחושת בטן' },
   // BENEFIT — a real number, attributed
   { type: 'proof', hold: 4.4, big: '100,000 ₪', then: 'נחסכו ללקוח אחד במיחזור משכנתה.',
-    src: 'מתוך המלצות הלקוחות באתר · ‎₪500 בחודש' },
-  { type: 'plate', hold: 3.2, shot: 1, view: 'desktop', kicker: 'התהליך', label: 'משיחה ראשונה ועד תוכנית' },
+    src: 'מתוך המלצות הלקוחות באתר · ‎500 ₪ בחודש' },
   { type: 'end',   hold: 4.8 },
 ];
 
