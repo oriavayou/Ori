@@ -184,7 +184,10 @@ const rise = (txt, cls, dur, delay) => {
 document.querySelector('.blob.a').style.animation = `drift1 ${DUR}s linear 0s both`;
 document.querySelector('.blob.b').style.animation = `drift2 ${DUR}s linear 0s both`;
 document.querySelector('.blob.c').style.animation = `drift3 ${DUR}s linear 0s both`;
-an(document.querySelector('.progress i'),'fill',DUR,0,'linear');
+// the bar can span a longer video than this clip (see site-promo.mjs), so it is
+// timed against the whole piece and offset back to where this clip starts
+const P = C.meta?.progress || { total: DUR, offset: 0 };
+an(document.querySelector('.progress i'),'fill',P.total,-P.offset,'linear');
 
 const SCENES = (C.scenes||[]).map((s,i,all)=>({
   ...s,
@@ -304,7 +307,8 @@ for (const s of SCENES) (builders[s.type] || (()=>{}))(scene(s.type, s), s);
 const firstEnd = SCENES[0]?.end ?? 4;
 const chip = el('div','chip');
 chip.append(el('b',null,C.brand.mark||'★'), el('span',null,C.brand.name||''));
-an(chip,'fadeUp',.6,firstEnd-.3);
+// mid-video clips inherit a chip that is already on screen
+if (P.offset > 0) an(chip,'fadeUp',.01,0); else an(chip,'fadeUp',.6,firstEnd-.3);
 stage.appendChild(chip);
 
 // --- renderer hooks -------------------------------------------------------
