@@ -142,8 +142,9 @@ const SCRIPT = [
   // CREDIBILITY — his own numbers, from his own hero
   { type: 'proof', hold: 4.0, big: '15+', then: 'שנות ניסיון מקצועי.',
     src: 'מפוקח · רשות ניירות ערך ורשות שוק ההון' },
-  { type: 'plate', hold: 3.8, shot: 0, view: 'phone',
-    kicker: 'האתר', label: 'ייעוץ פיננסי, השקעות ופנסיה — <b>בדרך חכמה יותר</b>' },
+  // The plates caption themselves from the captured page, so a re-capture can
+  // never leave the words describing a screen that is no longer there.
+  { type: 'plate', hold: 3.8, shot: 0, view: 'phone', kicker: 'האתר' },
   // FEATURES — the six services as they are named on the site
   { type: 'list',  hold: 5.4, kicker: 'מה נכנס לתמונה', items: [
       'ייעוץ השקעות',
@@ -153,15 +154,15 @@ const SCRIPT = [
       'חוות דעת כלכליות והערכות שווי',
       'גישור ובוררות עסקית',
   ] },
-  // BENEFIT — four AI tools anyone can open for free
-  { type: 'creds', hold: 4.2, kicker: 'באפליקציה — בחינם', items: [
-      ['01', 'תכנון פרישה'],
-      ['02', 'משכנתא'],
-      ['03', 'AI יועץ השקעות'],
+  // The app, as text only — its screens are not captured here, and nothing is
+  // said about what it costs.
+  { type: 'creds', hold: 4.0, kicker: 'באפליקציה · app.iftach-advice.com', items: [
+      ['01', 'AI יועץ השקעות'],
+      ['02', 'תכנון פרישה'],
+      ['03', 'משכנתא'],
       ['04', 'פורטל סטודנטים'],
   ] },
-  { type: 'plate', hold: 3.4, shot: 4, view: 'phone',
-    kicker: 'האפליקציה', label: 'ארבעה אזורים, כל אחד עם עוזר AI — <b>app.iftach-advice.com</b>' },
+  { type: 'plate', hold: 3.4, shot: 1, view: 'phone', kicker: 'האתר' },
   { type: 'end',   hold: 4.8 },
 ];
 
@@ -184,6 +185,15 @@ const DATA = window.__CONTENT || { shots: [] };
 /** Put the brand's logo at promo/brand/logo.png (white background is fine —
  *  run tools/prep-logo.mjs to knock it out). Everything falls back to type. */
 const LOGO = '/brand/logo-alpha.png';
+/** Tried in order, so dropping any one of these into promo/brand/ is enough. */
+const LOGO_CHAIN = ['/brand/logo-alpha.png', '/brand/logo.png', '/brand/logo-sign.png'];
+/** Walks the chain on each load failure; calls done() when nothing is left. */
+function chainSrc(img, first, done) {
+  const queue = [first, ...LOGO_CHAIN.filter((u) => u !== first)];
+  let i = 0;
+  img.onerror = () => (++i < queue.length ? (img.src = queue[i]) : done());
+  img.src = queue[0];
+}
 /** The lit-sign artwork, used full frame at the turn and framed at the close. */
 const SIGN = '/brand/logo-sign.png';
 const stage = document.getElementById('stage');
@@ -209,7 +219,7 @@ function plate(shotIndex, view, kind) {
   frame.appendChild(img);
   const box = kind === 'wide' ? { w: 888, h: 560 } : kind === 'tall' ? { w: 660, h: 1160 } : { w: 420, h: 700 };
   const shown = box.w * (v.h / v.w);
-  return { frame, img, pan: Math.max(0, shown - box.h) };
+  return { frame, img, pan: Math.max(0, shown - box.h), shot: s };
 }
 
 async function boot() {
@@ -270,7 +280,6 @@ async function boot() {
       const flat = sc.flat === true;          // flat mark on ink vs the lit sign
       const wrap = el('div', flat ? 'logo' : 'sign');
       const img = el('img');
-      img.src = flat ? LOGO : SIGN;
       img.alt = brand.name || '';
       if (flat) {
         const art = el('div', 'art');
@@ -345,7 +354,8 @@ async function boot() {
       const p = plate(sc.shot, sc.view, sc.view === 'desktop' ? 'wide' : 'tall');
       const wrap = el('div', 'plate');
       const kick = el('div', 'eyebrow', sc.kicker || '');
-      const label = el('div', 'label', sc.label || '');
+      // never assert what a shot is: the caption comes from that page's own heading
+      const label = el('div', 'label', sc.label || p?.shot?.heading || p?.shot?.title || '');
       if (p) wrap.append(kick, p.frame, label); else wrap.append(kick, label);
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
@@ -388,16 +398,13 @@ async function boot() {
       const wrap = el('div', 'end');
       const card = el('div', 'signcard');
       const mark = el('img');
-      mark.src = SIGN;
       mark.alt = brand.name || '';
       card.appendChild(mark);
       const h1 = el('h1', null, '');
-      let cardFellBack = false;
-      mark.onerror = () => {          // lit sign → flat mark → type
-        if (!cardFellBack) { cardFellBack = true; mark.src = LOGO; return; }
+      chainSrc(mark, SIGN, () => {
         card.remove();
         h1.textContent = brand.name || '';
-      };
+      });
       mark.onload = () => sub.remove();
       const sub = el('div', 'sub', brand.tagline || '');
       // (removed when the logo image loads — it carries the tagline itself)
