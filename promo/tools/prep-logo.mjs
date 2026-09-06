@@ -26,11 +26,19 @@ if (!existsSync(input)) {
   process.exit(1);
 }
 
-// colorkey removes the white field; blend keeps the anti-aliased edges soft
-const similarity = get('similarity', '0.12');
-const key = `colorkey=white:${similarity}:0.06,format=rgba`;
 const FF = await ffmpegPath();
+
+// A logo that already carries alpha must not be keyed: colorkey compares RGB to
+// white, and a transparent pixel's RGB is black — so keying one turns the
+// transparent field into an opaque black box.
+const probe = spawnSync(FF, ['-hide_banner', '-i', input], { encoding: 'utf8' });
+const hasAlpha = /Video: \w+, (?:\w*a\w*\b|ya\d*|rgba|bgra|argb|abgr)/.test(probe.stderr || '');
+
+// colorkey removes a white field; blend keeps the anti-aliased edges soft
+const similarity = get('similarity', '0.12');
+const key = hasAlpha ? 'format=rgba' : `colorkey=white:${similarity}:0.06,format=rgba`;
 const tmp = out + '.keyed.png';
+if (hasAlpha) console.log('source already has alpha — trimming only');
 
 execFileSync(FF, ['-y', '-hide_banner', '-loglevel', 'error', '-i', input, '-vf', key, tmp]);
 
@@ -47,7 +55,7 @@ if (get('trim', '1') !== '0') {
 }
 
 if (crop) {
-  execFileSync(FF, ['-y', '-hide_banner', '-loglevel', 'error', '-i', tmp, '-vf', `crop=${crop}`, out]);
+  execFileSync(FF, ['-y', '-hide_banner', '-loglevel', 'error', '-i', tmp, '-vf', `crop=${crop},format=rgba`, out]);
   rmSync(tmp, { force: true });
 } else {
   renameSync(tmp, out);

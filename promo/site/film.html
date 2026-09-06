@@ -77,7 +77,14 @@ body{display:grid;place-items:center;min-height:100vh}
 .end .signcard img{width:100%;display:block}
 
 .logo{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:30px;padding:0 110px}
-.logo img{width:min(920px,92%);height:auto;display:block}
+/* The supplied mark carries its own small dark tagline, which disappears on the
+   ink ground. --logo-clip keeps the top of the artwork (mark + wordmark) and the
+   film sets the tagline in its own type below. Raise it to 1 for a mark that has
+   nothing to trim. */
+  .logo .art{--logo-clip:.74;width:min(940px,94%);overflow:hidden;display:block}
+  .logo .art img{width:100%;height:auto;display:block;
+    clip-path:inset(0 0 calc((1 - var(--logo-clip)) * 100%) 0);margin-bottom:calc((var(--logo-clip) - 1) * 26%)}
+  .logo .tag{margin-top:6px}
 .logo .wordmark{font-size:110px;font-weight:900;letter-spacing:-.05em;color:var(--gold)}
 .logo .tag{font-size:30px;color:var(--dim);letter-spacing:.02em}
 
@@ -128,22 +135,17 @@ body{display:grid;place-items:center;min-height:100vh}
    ======================================================================== */
 const SCRIPT = [
   // HOOK — the question that separates an objective adviser from a seller
-  { type: 'hook',  hold: 4.0, lines: ['מי משלם', 'ליועץ שלכם?'] },
-  { type: 'say',   hold: 4.0, lines: ['כשהייעוץ תלוי במוצר שנמכר לכם,', 'הוא כבר לא באמת <em>שלכם</em>.'] },
-  // TURN — the through-line clears and the lit sign fills the frame
-  { type: 'logo',  hold: 3.6, tag: 'ייעוץ פיננסי חכם' },
-  // CREDIBILITY
-  { type: 'creds', hold: 4.0, items: [
-      ['01', 'יועץ השקעות בעל רישיון'],
-      ['02', 'יועץ פנסיוני'],
-      ['03', 'כלכלן ואקטואר'],
-  ] },
-  // his three principles, in his own words, shown on his own site
-  { type: 'plate', hold: 3.8, shot: 1, view: 'phone',
-    kicker: 'שלושה עקרונות', label: 'תכנון לטווח ארוך · <b>שקיפות מלאה</b> · גישה אישית' },
-  { type: 'say',   hold: 3.6, lines: ['תהליך ברור.', 'בלי ריביות חבויות.'] },
-  // FEATURES — the real service list
-  { type: 'list',  hold: 5.6, kicker: 'מה נכנס לתמונה', items: [
+  { type: 'hook',  hold: 3.8, lines: ['מי משלם', 'ליועץ שלכם?'] },
+  { type: 'say',   hold: 3.8, lines: ['כשהייעוץ תלוי במוצר שנמכר לכם,', 'הוא כבר לא באמת <em>שלכם</em>.'] },
+  // TURN — the through-line clears and the mark lands
+  { type: 'logo',  hold: 3.4, flat: true, tag: 'ייעוץ פיננסי חכם' },
+  // CREDIBILITY — his own numbers, from his own hero
+  { type: 'proof', hold: 4.0, big: '15+', then: 'שנות ניסיון מקצועי.',
+    src: 'מפוקח · רשות ניירות ערך ורשות שוק ההון' },
+  { type: 'plate', hold: 3.8, shot: 0, view: 'phone',
+    kicker: 'האתר', label: 'ייעוץ פיננסי, השקעות ופנסיה — <b>בדרך חכמה יותר</b>' },
+  // FEATURES — the six services as they are named on the site
+  { type: 'list',  hold: 5.4, kicker: 'מה נכנס לתמונה', items: [
       'ייעוץ השקעות',
       'ייעוץ פנסיוני',
       'ייעוץ אשראי עסקי והלוואות בערבות מדינה',
@@ -151,11 +153,15 @@ const SCRIPT = [
       'חוות דעת כלכליות והערכות שווי',
       'גישור ובוררות עסקית',
   ] },
-  { type: 'plate', hold: 3.6, shot: 2, view: 'phone',
-    kicker: 'חדשנות פיננסית', label: 'ניתוח נתונים חי — לא תחושת בטן' },
-  // BENEFIT — a real number, attributed
-  { type: 'proof', hold: 4.4, big: '100,000 ₪', then: 'נחסכו ללקוח אחד במיחזור משכנתה.',
-    src: 'מתוך המלצות הלקוחות באתר · ‎500 ₪ בחודש' },
+  // BENEFIT — four AI tools anyone can open for free
+  { type: 'creds', hold: 4.2, kicker: 'באפליקציה — בחינם', items: [
+      ['01', 'תכנון פרישה'],
+      ['02', 'משכנתא'],
+      ['03', 'AI יועץ השקעות'],
+      ['04', 'פורטל סטודנטים'],
+  ] },
+  { type: 'plate', hold: 3.4, shot: 4, view: 'phone',
+    kicker: 'האפליקציה', label: 'ארבעה אזורים, כל אחד עם עוזר AI — <b>app.iftach-advice.com</b>' },
   { type: 'end',   hold: 4.8 },
 ];
 
@@ -248,12 +254,19 @@ async function boot() {
     if (sc.type === 'logo') {
       // The brand moment: the through-line clears and the lit sign fills the
       // frame. It is artwork, not a flat asset, so it is used as a shot.
-      const wrap = el('div', 'sign');
+      const flat = sc.flat === true;          // flat mark on ink vs the lit sign
+      const wrap = el('div', flat ? 'logo' : 'sign');
       const img = el('img');
-      img.src = SIGN;
+      img.src = flat ? LOGO : SIGN;
       img.alt = brand.name || '';
-      const edge = el('div', 'edge');
-      wrap.append(img, edge);
+      if (flat) {
+        const art = el('div', 'art');
+        art.appendChild(img);
+        wrap.appendChild(art);
+      } else {
+        wrap.append(img, el('div', 'edge'));
+      }
+      if (flat && (sc.tag || brand.tagline)) wrap.append(el('div', 'tag', sc.tag || brand.tagline));
       const fallback = el('div', 'logo');
       img.onerror = () => {
         wrap.remove();
@@ -269,7 +282,7 @@ async function boot() {
       master.set(wrap, { autoAlpha: 1 }, start)
             .to('.motif', { y: -520, opacity: 0, duration: .7, ease: 'brand' }, start - .4)
             .from(img, { autoAlpha: 0, duration: .9, ease: 'brand' }, start)
-            .fromTo(img, { scale: 1.07 }, { scale: 1, duration: sc.hold + .6, ease: 'none' }, start)
+            .fromTo(img, { scale: flat ? 1.03 : 1.07 }, { scale: 1, duration: sc.hold + .6, ease: 'none' }, start)
             .to(wrap, { autoAlpha: 0, duration: OUT, ease: 'power2.in' }, end - OUT)
             .set(wrap, { autoAlpha: 0 }, end)
             .to('.motif', { y: 0, opacity: .9, duration: .8, ease: 'brand' }, end - .2);
@@ -371,10 +384,13 @@ async function boot() {
       const sub = el('div', 'sub', brand.tagline || '');
       // (removed when the logo image loads — it carries the tagline itself)
       const url = el('div', 'url', cta.url || host);
-      const btn = el('div', 'cta', cta.button || 'לתיאום פגישה');
-      const fine = cta.disclaimer ? el('p', 'fine', cta.disclaimer) : null;
-      wrap.append(card, h1, sub, url, btn);
-      if (fine) wrap.append(fine);
+      const btn = el('div', 'cta', 'קבע פגישה');
+      // his own wording, as it appears on the site
+      const fine = el('p', 'fine',
+        'האמור אינו מהווה ייעוץ השקעות, ייעוץ פנסיוני או המלצה לפעולה. ' +
+        'ייעוץ אישי ניתן על ידי יפתח ונגר, יועץ השקעות ויועץ פנסיוני אובייקטיבי, ' +
+        'בכפוף להסכם ייעוץ ולשאלון התאמה.');
+      wrap.append(card, h1, sub, url, btn, fine);
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
