@@ -392,7 +392,12 @@ async function boot() {
       mark.alt = brand.name || '';
       card.appendChild(mark);
       const h1 = el('h1', null, '');
-      mark.onerror = () => { card.remove(); h1.textContent = brand.name || ''; };
+      let cardFellBack = false;
+      mark.onerror = () => {          // lit sign → flat mark → type
+        if (!cardFellBack) { cardFellBack = true; mark.src = LOGO; return; }
+        card.remove();
+        h1.textContent = brand.name || '';
+      };
       mark.onload = () => sub.remove();
       const sub = el('div', 'sub', brand.tagline || '');
       // (removed when the logo image loads — it carries the tagline itself)
