@@ -165,9 +165,20 @@ const SCRIPT = [
   { type: 'end',   hold: 4.8 },
 ];
 
-gsap.registerPlugin(CustomEase, MorphSVGPlugin);
+/* Optional plugins: the film still cuts without them, it just loses the bespoke
+   curve and the line morph. Missing files used to throw here, which left the
+   page with no __seek at all and the renderer failing on its first frame. */
+const has = (name) => typeof window[name] !== 'undefined';
+const plugins = [has('CustomEase') && window.CustomEase, has('MorphSVGPlugin') && window.MorphSVGPlugin];
+gsap.registerPlugin(...plugins.filter(Boolean));
+
 /** One brand curve: a long, weighted settle. Used for every entrance. */
-CustomEase.create('brand', 'M0,0 C0.14,0 0.06,1 1,1');
+const BRAND = has('CustomEase')
+  ? (CustomEase.create('brand', 'M0,0 C0.14,0 0.06,1 1,1'), 'brand')
+  : 'expo.out';
+if (!has('CustomEase') || !has('MorphSVGPlugin')) {
+  console.warn('film: missing GSAP plugins in site/vendor — run `npm run vendor`');
+}
 
 const DATA = window.__CONTENT || { shots: [] };
 /** Put the brand's logo at promo/brand/logo.png (white background is fine —
@@ -215,9 +226,11 @@ async function boot() {
      scenes so that a scene which needs the line out of its way still wins. */
   const total = SCRIPT.reduce((a, sc) => a + sc.hold, 0);
   const CALM = 'M-40,190 C120,186 200,180 300,168 C420,152 520,132 640,110 C760,88 880,72 1120,54';
-  master.to('#line', { morphSVG: CALM, duration: total * .58, ease: 'power1.inOut' }, total * .18)
-        .fromTo('.motif', { y: 0, opacity: .9 }, { y: -60, opacity: .55, duration: total, ease: 'none' }, 0)
-        .to('.motif', { y: 300, opacity: .35, duration: 1.8, ease: 'brand' }, total - 4.6);
+  if (has('MorphSVGPlugin')) {
+    master.to('#line', { morphSVG: CALM, duration: total * .58, ease: 'power1.inOut' }, total * .18);
+  }
+  master.fromTo('.motif', { y: 0, opacity: .9 }, { y: -60, opacity: .55, duration: total, ease: 'none' }, 0)
+        .to('.motif', { y: 300, opacity: .35, duration: 1.8, ease: BRAND }, total - 4.6);
 
   let t = 0;
   const OUT = .55;                       // every scene leaves the same way
@@ -242,8 +255,8 @@ async function boot() {
       wrap.append(h, rule);
       root.appendChild(wrap);
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from(masks, { yPercent: 112, duration: 1.05, ease: 'brand', stagger: .12 }, start)
-            .to(rule, { scaleX: 1, duration: .9, ease: 'brand' }, start + .35)
+            .from(masks, { yPercent: 112, duration: 1.05, ease: BRAND, stagger: .12 }, start)
+            .to(rule, { scaleX: 1, duration: .9, ease: BRAND }, start + .35)
             // the whole block drifts a few pixels while it is held: stillness, not freeze
             .fromTo(wrap, { y: 14 }, { y: -14, duration: sc.hold, ease: 'none' }, start)
             .to(wrap, { autoAlpha: 0, y: -46, duration: OUT, ease: 'power2.in' }, end - OUT)
@@ -280,12 +293,12 @@ async function boot() {
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .to('.motif', { y: -520, opacity: 0, duration: .7, ease: 'brand' }, start - .4)
-            .from(img, { autoAlpha: 0, duration: .9, ease: 'brand' }, start)
+            .to('.motif', { y: -520, opacity: 0, duration: .7, ease: BRAND }, start - .4)
+            .from(img, { autoAlpha: 0, duration: .9, ease: BRAND }, start)
             .fromTo(img, { scale: flat ? 1.03 : 1.07 }, { scale: 1, duration: sc.hold + .6, ease: 'none' }, start)
             .to(wrap, { autoAlpha: 0, duration: OUT, ease: 'power2.in' }, end - OUT)
             .set(wrap, { autoAlpha: 0 }, end)
-            .to('.motif', { y: 0, opacity: .9, duration: .8, ease: 'brand' }, end - .2);
+            .to('.motif', { y: 0, opacity: .9, duration: .8, ease: BRAND }, end - .2);
     }
 
     if (sc.type === 'creds' || sc.type === 'list') {
@@ -307,7 +320,7 @@ async function boot() {
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from(rows, { y: 34, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .13 }, start + .1)
+            .from(rows, { y: 34, autoAlpha: 0, duration: .7, ease: BRAND, stagger: .13 }, start + .1)
             .fromTo(wrap, { y: 12 }, { y: -12, duration: sc.hold, ease: 'none' }, start)
             .to(wrap, { autoAlpha: 0, y: -40, duration: OUT, ease: 'power2.in' }, end - OUT)
             .set(wrap, { autoAlpha: 0 }, end);
@@ -322,8 +335,8 @@ async function boot() {
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from(big, { yPercent: 40, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
-            .from([then, src], { y: 26, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .14 }, start + .35)
+            .from(big, { yPercent: 40, autoAlpha: 0, duration: 1, ease: BRAND }, start)
+            .from([then, src], { y: 26, autoAlpha: 0, duration: .7, ease: BRAND, stagger: .14 }, start + .35)
             .to(wrap, { autoAlpha: 0, y: -36, duration: OUT, ease: 'power2.in' }, end - OUT)
             .set(wrap, { autoAlpha: 0 }, end);
     }
@@ -337,11 +350,11 @@ async function boot() {
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from([kick, label], { y: 26, autoAlpha: 0, duration: .8, ease: 'brand', stagger: .1 }, start + .2);
+            .from([kick, label], { y: 26, autoAlpha: 0, duration: .8, ease: BRAND, stagger: .1 }, start + .2);
       if (p) {
         master.fromTo(p.frame,
           { clipPath: 'inset(0% 0% 100% 0%)' },
-          { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.1, ease: 'brand' }, start)
+          { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.1, ease: BRAND }, start)
           .fromTo(p.frame, { scale: 1.04 }, { scale: 1, duration: sc.hold, ease: 'none' }, start)
           .fromTo(p.img, { y: 0 }, { y: -p.pan * .55, duration: sc.hold - .3, ease: 'none' }, start + .2);
       }
@@ -363,9 +376,9 @@ async function boot() {
         gsap.set(wrap, { autoAlpha: 0 });
         const s0 = start + k * each;
         master.set(wrap, { autoAlpha: 1 }, s0)
-              .from(word, { yPercent: 45, autoAlpha: 0, duration: .5, ease: 'brand' }, s0)
+              .from(word, { yPercent: 45, autoAlpha: 0, duration: .5, ease: BRAND }, s0)
               .from(num, { autoAlpha: 0, duration: .3 }, s0 + .08)
-              .to(rule, { scaleX: 1, duration: .45, ease: 'brand' }, s0 + .15)
+              .to(rule, { scaleX: 1, duration: .45, ease: BRAND }, s0 + .15)
               .to(wrap, { autoAlpha: 0, duration: .22, ease: 'power2.in' }, s0 + each - .24)
               .set(wrap, { autoAlpha: 0 }, s0 + each - .01);
       });
@@ -394,9 +407,9 @@ async function boot() {
       root.appendChild(wrap);
       gsap.set(wrap, { autoAlpha: 0 });
       master.set(wrap, { autoAlpha: 1 }, start)
-            .from([card, h1], { y: 30, autoAlpha: 0, duration: 1, ease: 'brand' }, start)
+            .from([card, h1], { y: 30, autoAlpha: 0, duration: 1, ease: BRAND }, start)
             .from([sub, url, btn, fine].filter(Boolean),
-              { y: 28, autoAlpha: 0, duration: .7, ease: 'brand', stagger: .14 }, start + .3);
+              { y: 28, autoAlpha: 0, duration: .7, ease: BRAND, stagger: .14 }, start + .3);
     }
 
     t = end;
@@ -410,8 +423,12 @@ async function boot() {
   return true;
 }
 
-window.__ready = boot();
 window.__seek = (t) => { master.time(t); };
+window.__ready = boot().catch((err) => {
+  // Surface the real cause: a rejected __ready used to look like a dead __seek.
+  console.error('film: build failed', err);
+  throw err;
+});
 </script>
 </body>
 </html>

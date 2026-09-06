@@ -50,7 +50,19 @@ const browser = await chromium.launch({ args: ['--force-color-profile=srgb', '--
 const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
 await page.addInitScript((c) => { window.__CONTENT = c; }, content);
 await page.goto(server.origin + '/' + pageFile, { waitUntil: 'load' });
+page.on('pageerror', (e) => console.error('page error:', e.message));
 await page.evaluate(() => window.__ready);
+
+// A page that failed to build exposes no seek hook; say so plainly instead of
+// dying one line later inside the frame loop.
+if (!(await page.evaluate(() => typeof window.__seek === 'function'))) {
+  console.error(
+    `\n${pageFile} did not finish loading: window.__seek is missing.\n` +
+    'If this is site/film.html or site/tour.html, its animation libraries are\n' +
+    'probably missing or out of date — run:  npm run vendor\n'
+  );
+  process.exit(1);
+}
 await page.addStyleTag({ content: `.stage{zoom:${scale}}` });
 await page.evaluate(() => document.documentElement.classList.add('paused'));
 
