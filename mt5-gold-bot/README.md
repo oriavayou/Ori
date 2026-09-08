@@ -61,11 +61,13 @@ mt5-gold-bot/
 │   │   └── Execution.mqh     שליחת פקודות, ניסיונות חוזרים, ניהול פוזיציה
 │   └── Presets/              קבצי הגדרות מוכנים
 ├── research/
-│   ├── apexgold/             פורט פייתון של אותו מנוע בדיוק
-│   ├── run_backtest.py       בקטסט, מונטה קרלו, walk-forward
-│   └── selftest.py           19 בדיקות תקינות
+│   ├── apexgold/             פורט פייתון של אותו מנוע, ומנוע ה־RSI Stretch
+│   ├── run_backtest.py       בקטסט, מונטה קרלו, walk-forward לבוט הזהב
+│   ├── run_forex.py          בקטסט ואבחון לאסטרטגיית המט"ח היומית
+│   └── selftest.py           36 בדיקות תקינות
 └── docs/
     ├── STRATEGY.md           מחקר האסטרטגיות המלא
+    ├── FOREX_RSI.md          מימוש RSI Stretch ובדיקת הטענות שבמפרט
     ├── SETUP.md              התקנה, בדיקה, אופטימיזציה
     └── RISK.md               ניהול סיכונים וציפיות
 ```
@@ -80,7 +82,7 @@ mt5-gold-bot/
 cd mt5-gold-bot/research
 pip install -r requirements.txt
 
-python selftest.py                            # 19 בדיקות תקינות
+python selftest.py                            # 36 בדיקות תקינות
 python run_backtest.py --synthetic --bars 30000   # בדיקת צנרת
 ```
 
@@ -109,7 +111,7 @@ python run_backtest.py --csv XAUUSD_M15.csv --broker-gmt-offset 2 --walk-forward
 
 ## מה נבדק ומה עבר
 
-`selftest.py` מריץ 19 בדיקות. הן קיימות כי אלה בדיוק הדברים שהופכים בקטסט
+`selftest.py` מריץ 36 בדיקות. הן קיימות כי אלה בדיוק הדברים שהופכים בקטסט
 לאשליה:
 
 | קבוצה | מה נבדק |
@@ -120,6 +122,7 @@ python run_backtest.py --csv XAUUSD_M15.csv --broker-gmt-offset 2 --walk-forward
 | גודל פוזיציה | הסיכון בפועל תואם את האחוז שהוגדר |
 | נר דו־משמעי | נר שנגע גם בסטופ וגם ביעד נספר כהפסד, לא כרווח |
 | שכבת סיכון | תקרת עסקאות יומית ועצירת ירידה מהשיא באמת עוצרות |
+| מקרה בקרה | על הליכה אקראית המנוע לא מוצא יתרון, ועם יתרון מושתל הוא מוצא אותו |
 
 בהרצה על נתונים מלאכותיים חסרי יתרון אמיתי, המנוע מחזיר תוצאה של בערך אפס
 עם 34 אחוז הצלחה. זה הסימן החשוב ביותר לתקינות: **המנוע לא ממציא רווח

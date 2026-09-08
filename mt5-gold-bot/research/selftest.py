@@ -17,7 +17,8 @@ import pandas as pd
 
 from apexgold import indicators as ind
 from apexgold.backtest import Backtester, RiskSettings, SymbolSpec
-from apexgold.data import synthetic
+from apexgold.data import synthetic, synthetic_fx_daily
+from apexgold.forex_rsi import RsiStretchParams, run_portfolio, summarise
 from apexgold.strategy import (Params, add_touch_flags, build_features,
                                generate_signals)
 
@@ -163,6 +164,133 @@ def test_risk_limits() -> None:
     check("a tight drawdown guard halts the run", tiny["halted"] or len(tiny["trades"]) < 5)
 
 
+# ------------------------------------------------------------ forex RSI
+def test_forex_rsi_spec_parity() -> None:
+    """The Cutler indicators must equal a direct transcription of the spec."""
+    print("\nForex RSI Stretch, indicator parity")
+
+    def ref_rsi(closes, period, end):
+        if end < period:
+            return None
+        gain = loss = 0.0
+        for i in range(end - period + 1, end + 1):
+            d = closes[i] - closes[i - 1]
+            if d >= 0:
+                gain += d
+            else:
+                loss -= d
+        if loss == 0:
+            return 100.0
+        return 100 - 100 / (1 + gain / loss)
+
+    def ref_atr(h, l, c, end, period=14):
+        if end < period:
+            return None
+        s = 0.0
+        for i in range(end - period + 1, end + 1):
+            s += max(h[i] - l[i], abs(h[i] - c[i - 1]), abs(l[i] - c[i - 1]))
+        return s / period
+
+    rng = np.random.default_rng(0)
+    n = 120
+    close = 100 + np.cumsum(rng.standard_normal(n))
+    high = close + rng.uniform(0.1, 1.0, n)
+    low = close - rng.uniform(0.1, 1.0, n)
+    df = pd.DataFrame({"open": close, "high": high, "low": low, "close": close})
+
+    mine_r = ind.cutler_rsi(df["close"], 14).to_numpy()
+    mine_a = ind.sma_atr(df, 14).to_numpy()
+    dr = max(abs(mine_r[i] - ref_rsi(close, 14, i)) for i in range(20, n))
+    da = max(abs(mine_a[i] - ref_atr(high, low, close, i, 14)) for i in range(20, n))
+
+    check("Cutler RSI matches the spec's reference code", dr < 1e-9, f"max diff {dr:.2e}")
+    check("simple ATR matches the spec's reference code", da < 1e-9, f"max diff {da:.2e}")
+    check("Cutler RSI differs from Wilder RSI, so they are not interchangeable",
+          abs(ind.rsi(df["close"], 14).iloc[-1] - mine_r[-1]) > 0.5)
+
+
+def test_forex_levels() -> None:
+    print("\nForex RSI Stretch, level construction")
+    data = synthetic_fx_daily(pairs=4, days=400, mean_reversion=0.05, seed=2)
+    sig = run_portfolio(data, RsiStretchParams())
+    check("signals were produced", len(sig) > 20, f"{len(sig)}")
+
+    if len(sig):
+        longs = sig[sig["direction"] > 0]
+        shorts = sig[sig["direction"] < 0]
+        check("longs are ordered stop < entry < target",
+              bool(((longs["stop"] < longs["entry"]) & (longs["entry"] < longs["target"])).all()))
+        check("shorts are ordered target < entry < stop",
+              bool(((shorts["target"] < shorts["entry"]) & (shorts["entry"] < shorts["stop"])).all()))
+
+        # rounding entry, stop and target to the pair's digits independently
+        # means the ratio is 1.00 only to within a tick, not exactly
+        rr = (sig["target"] - sig["entry"]).abs() / sig["risk"]
+        worst = float((rr - 1.0).abs().max())
+        check("reward to risk is 1:1 to within price rounding",
+              worst < 0.005, f"max deviation {worst:.2e}")
+
+        decided = sig[sig["outcome"].isin(["target", "stopped"])]
+        check("a decided trade returns exactly plus or minus one R",
+              bool(decided["r"].abs().sub(1.0).abs().max() < 1e-12))
+
+        check("entries fire only outside the 35 to 65 band",
+              bool(((sig["rsi"] < 35.0) | (sig["rsi"] > 65.0)).all()))
+
+
+def test_forex_one_open_per_pair() -> None:
+    print("\nForex RSI Stretch, position lock")
+    data = synthetic_fx_daily(pairs=3, days=500, mean_reversion=0.05, seed=4)
+    sig = run_portfolio(data, RsiStretchParams())
+    overlaps = 0
+    for _, grp in sig.groupby("symbol"):
+        grp = grp.sort_values("entry_time")
+        prev_exit = None
+        for _, row in grp.iterrows():
+            if prev_exit is not None and row["entry_time"] <= prev_exit:
+                overlaps += 1
+            prev_exit = row["exit_time"]
+    check("a pair never holds two signals at once", overlaps == 0, f"{overlaps} overlaps")
+
+
+def test_forex_control_and_edge_recovery() -> None:
+    """A random walk must yield no edge; a known edge must be recovered."""
+    print("\nForex RSI Stretch, control and edge recovery")
+    results = {}
+    for mr in (0.0, 0.05, 0.10):
+        data = synthetic_fx_daily(pairs=12, days=750, mean_reversion=mr, seed=21)
+        results[mr] = summarise(run_portfolio(data, RsiStretchParams()))
+
+    check("no edge is reported on a random walk",
+          results[0.0]["expectancy_r"] <= 0.02,
+          f"expectancy {results[0.0]['expectancy_r']:.3f} R")
+    check("expectancy rises with the injected mean reversion",
+          results[0.0]["expectancy_r"] < results[0.05]["expectancy_r"] < results[0.10]["expectancy_r"],
+          " -> ".join(f"{results[m]['expectancy_r']:.3f}" for m in (0.0, 0.05, 0.10)))
+    check("hit rate rises with the injected mean reversion",
+          results[0.0]["hit_rate"] < results[0.05]["hit_rate"] < results[0.10]["hit_rate"],
+          " -> ".join(f"{results[m]['hit_rate']:.1f}%" for m in (0.0, 0.05, 0.10)))
+
+
+def test_forex_expiry_and_bias() -> None:
+    print("\nForex RSI Stretch, expiry behaviour")
+    data = synthetic_fx_daily(pairs=12, days=750, mean_reversion=0.05, seed=21)
+
+    base = summarise(run_portfolio(data, RsiStretchParams()))
+    check("a working settlement engine expires almost nothing",
+          base["expiry_rate"] < 10.0, f"{base['expiry_rate']:.1f}%")
+    check("a 1 ATR barrier is usually reached within a few bars",
+          base["median_bars_held"] <= 5, f"median {base['median_bars_held']:.0f} bars")
+
+    skipped = summarise(run_portfolio(data, RsiStretchParams(skip_bars=8)))
+    check("ignoring post-entry bars drives the expiry rate up",
+          skipped["expiry_rate"] > base["expiry_rate"] * 3,
+          f"{base['expiry_rate']:.1f}% -> {skipped['expiry_rate']:.1f}%")
+    check("ignoring post-entry bars also inflates the measured hit rate",
+          skipped["hit_rate"] > base["hit_rate"],
+          f"{base['hit_rate']:.1f}% -> {skipped['hit_rate']:.1f}%")
+
+
 def main() -> int:
     print("ApexGold self-test")
     print("==================")
@@ -171,6 +299,11 @@ def main() -> int:
     test_costs()
     test_ambiguous_bar()
     test_risk_limits()
+    test_forex_rsi_spec_parity()
+    test_forex_levels()
+    test_forex_one_open_per_pair()
+    test_forex_control_and_edge_recovery()
+    test_forex_expiry_and_bias()
 
     print(f"\n{len(PASSED)} passed, {len(FAILED)} failed")
     if FAILED:

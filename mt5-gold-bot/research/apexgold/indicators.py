@@ -98,3 +98,32 @@ def swing_high(high: pd.Series, strength: int) -> pd.Series:
     n = 2 * strength + 1
     is_max = high.rolling(n, center=True).max() == high
     return is_max.shift(strength).fillna(False).astype(bool)
+
+
+# ---------------------------------------------------------------------------
+# Cutler variants: simple moving averages instead of Wilder smoothing.
+# The forex RSI-Stretch spec defines its indicators this way. They are not
+# interchangeable with the Wilder versions above - the same period gives
+# different values and therefore different signals - so both live here side
+# by side and each strategy names the one it means.
+# ---------------------------------------------------------------------------
+
+def cutler_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """RSI over a plain rolling window of gains and losses.
+
+    Matches the reference implementation: sum the gains and losses of the
+    last `period` differences, and return 100 when there were no losses.
+    """
+    diff = close.diff()
+    gain = diff.clip(lower=0.0).rolling(period).sum()
+    loss = (-diff.clip(upper=0.0)).rolling(period).sum()
+
+    out = 100.0 - 100.0 / (1.0 + gain / loss)
+    out = out.where(loss > 0, 100.0)
+    out[gain.isna() | loss.isna()] = np.nan
+    return out
+
+
+def sma_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """ATR as a simple mean of true range, not a Wilder average."""
+    return true_range(df).rolling(period).mean()

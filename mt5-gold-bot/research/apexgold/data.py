@@ -138,3 +138,60 @@ def synthetic(
     )
     df.index.name = "time"
     return df.round(2)
+
+
+def synthetic_fx_daily(
+    pairs: int = 12,
+    days: int = 750,
+    start: str = "2023-01-02",
+    seed: int = 21,
+    usd_beta: float = 0.6,
+    mean_reversion: float = 0.0,
+    daily_vol: float = 0.0055,
+) -> dict:
+    """Generate correlated daily FX bars with a controllable mean-reversion pull.
+
+    `mean_reversion` is the fraction of the deviation from a 20-day mean that
+    is pulled back each day. At 0.0 the series is a random walk and no
+    RSI-based edge can exist, which makes it the control case: any strategy
+    that shows an edge there has a bug. Raising it creates a known edge, so
+    a correct implementation must recover a positive expectancy that grows
+    with it.
+
+    `usd_beta` is the loading on a shared dollar factor, which is what makes
+    simultaneous signals across pairs correlated rather than independent.
+    """
+    rng = np.random.default_rng(seed)
+    idx = pd.bdate_range(start=start, periods=days)
+    n = len(idx)
+
+    usd = np.cumsum(rng.standard_normal(n) * daily_vol)
+
+    out = {}
+    for k in range(pairs):
+        beta = usd_beta * rng.uniform(0.6, 1.4) * (1 if k % 3 else -1)
+        idio_vol = daily_vol * rng.uniform(0.7, 1.3)
+
+        log_p = np.zeros(n)
+        log_p[0] = np.log(rng.uniform(0.7, 1.6))
+        for t in range(1, n):
+            shock = beta * (usd[t] - usd[t - 1]) + rng.standard_normal() * idio_vol
+            pull = 0.0
+            if mean_reversion > 0 and t > 20:
+                anchor = log_p[t - 20:t].mean()
+                pull = mean_reversion * (anchor - log_p[t - 1])
+            log_p[t] = log_p[t - 1] + shock + pull
+
+        close = np.exp(log_p)
+        open_ = np.concatenate([[close[0]], close[:-1]])
+        rng_intraday = np.abs(rng.standard_normal(n)) * daily_vol * close * 1.1
+        high = np.maximum(open_, close) + rng_intraday * rng.uniform(0.3, 1.0, n)
+        low = np.minimum(open_, close) - rng_intraday * rng.uniform(0.3, 1.0, n)
+
+        name = f"FX{k + 1:02d}"
+        out[name] = pd.DataFrame(
+            {"open": open_, "high": high, "low": low, "close": close},
+            index=idx,
+        ).round(5)
+        out[name].index.name = "time"
+    return out
