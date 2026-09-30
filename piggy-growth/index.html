@@ -46,6 +46,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 // =====================================================================
 //  Constants
@@ -129,7 +130,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
-const BG = new THREE.Color('#F3F4F6');
+const BG = new THREE.Color('#D9E8F4');
 scene.background = BG;
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -144,7 +145,7 @@ keyLight.position.set(-5.5, 10, 7);
 keyLight.target.position.set(0.6, 1.8, 0);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
-Object.assign(keyLight.shadow.camera, { left: -8, right: 8, top: 9, bottom: -7, near: 1, far: 40 });
+Object.assign(keyLight.shadow.camera, { left: -12, right: 12, top: 12, bottom: -10, near: 1, far: 50 });
 keyLight.shadow.radius = 7;
 keyLight.shadow.bias = -0.0004;
 keyLight.shadow.normalBias = 0.025;
@@ -169,18 +170,131 @@ function radialTexture(stops) {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
-const floorShadow = new THREE.Mesh(new THREE.PlaneGeometry(80, 80),
-  new THREE.ShadowMaterial({ color: '#5A4650', opacity: 0.15 }));
-floorShadow.rotation.x = -Math.PI / 2;
-floorShadow.receiveShadow = true;
-scene.add(floorShadow);
+// =====================================================================
+//  Kid's room: a light-wood kids' desk (top surface at y = 0) against a pastel wall.
+//  Everything sits BEHIND the pig so the lower frame stays clean for the headline.
+// =====================================================================
+const ROOM = { wallZ: -5.6, deskBack: -5.2, deskFront: 13 };
+const RM = {
+  desk: new THREE.MeshStandardMaterial({ color: '#F0DCC0', roughness: 0.55, envMapIntensity: 0.45 }),
+  wall: new THREE.MeshStandardMaterial({ color: '#D9E8F4', roughness: 0.95, envMapIntensity: 0.25 }),
+  white: new THREE.MeshStandardMaterial({ color: '#FBFAF6', roughness: 0.55, envMapIntensity: 0.5 }),
+  coral: new THREE.MeshStandardMaterial({ color: '#F2A08A', roughness: 0.6 }),
+  lemon: new THREE.MeshStandardMaterial({ color: '#F5D36A', roughness: 0.55 }),
+  sky: new THREE.MeshStandardMaterial({ color: '#8CC0E8', roughness: 0.55 }),
+  lilac: new THREE.MeshStandardMaterial({ color: '#C2AFE4', roughness: 0.6 }),
+  peach: new THREE.MeshStandardMaterial({ color: '#F7C49A', roughness: 0.6 }),
+  navy: new THREE.MeshStandardMaterial({ color: '#5A6C94', roughness: 0.6 }),
+  wood: new THREE.MeshStandardMaterial({ color: '#F1C891', roughness: 0.7 }),
+  string: new THREE.MeshStandardMaterial({ color: '#E6DED2', roughness: 0.9 }),
+};
+function addMesh(geo, mat, pos, rot, { cast = true, receive = true } = {}) {
+  const m = new THREE.Mesh(geo, mat);
+  if (pos) m.position.set(...pos);
+  if (rot) m.rotation.set(...rot);
+  m.castShadow = cast; m.receiveShadow = receive;
+  scene.add(m);
+  return m;
+}
+const rbox = (w, h, d, r = 0.06) => new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2.2, h / 2.2, d / 2.2));
+function canvasTexture(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  return tex;
+}
 
-const floorPool = new THREE.Mesh(new THREE.CircleGeometry(14, 96),
-  new THREE.MeshBasicMaterial({ color: '#E4E1E7', map: radialTexture([[0, 0.42], [0.35, 0.26], [1, 0]]), transparent: true, depthWrite: false }));
-floorPool.rotation.x = -Math.PI / 2;
-floorPool.position.y = 0.001;
-floorPool.renderOrder = -2;
-scene.add(floorPool);
+// desk top + wall
+addMesh(rbox(17.2, 0.5, ROOM.deskFront - ROOM.deskBack, 0.14), RM.desk, [0, -0.25, (ROOM.deskFront + ROOM.deskBack) / 2], null, { cast: false });
+addMesh(new THREE.PlaneGeometry(44, 34), RM.wall, [0, 9, ROOM.wallZ], null, { cast: false });
+
+
+// bunting garland across the top of the wall
+{
+  const x0 = -6.2, x1 = 7.2, yTop = 10.0, sag = 0.85, z = ROOM.wallZ + 0.12;
+  const yAt = x => yTop - sag * (1 - Math.pow((x - (x0 + x1) / 2) / ((x1 - x0) / 2), 2));
+  const pts = []; for (let k = 0; k <= 40; k++) { const x = lerp(x0, x1, k / 40); pts.push(new THREE.Vector3(x, yAt(x), z)); }
+  addMesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.025, 6), RM.string, null, null, { cast: false });
+  const flag = new THREE.Shape(); flag.moveTo(-0.32, 0); flag.lineTo(0.32, 0); flag.lineTo(0, -0.78); flag.closePath();
+  const flagGeo = new THREE.ShapeGeometry(flag);
+  const cols = [RM.coral, RM.lemon, RM.sky, RM.lilac, RM.peach];
+  let k = 0;
+  for (let x = x0 + 0.5; x < x1 - 0.3; x += 0.92, k++) {
+    const slope = (yAt(x + 0.01) - yAt(x - 0.01)) / 0.02;
+    const m = addMesh(flagGeo, cols[k % cols.length], [x, yAt(x), z + 0.01], [0, 0, Math.atan(slope)], { cast: false });
+    m.material = m.material.clone(); m.material.side = THREE.DoubleSide;
+  }
+}
+
+// a child's drawing taped to the wall
+{
+  const drawRng = mulberry32(77);
+  const art = canvasTexture(400, 300, (g, w, h) => {
+    g.fillStyle = '#FFFEFA'; g.fillRect(0, 0, w, h);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    const scribble = (color, width, pts) => { g.strokeStyle = color; g.lineWidth = width; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x + drawRng() * 3, y + drawRng() * 3) : g.moveTo(x, y)); g.stroke(); };
+    g.fillStyle = '#F6C945'; g.beginPath(); g.arc(320, 70, 34, 0, Math.PI * 2); g.fill();
+    for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4); scribble('#F2B632', 6, [[320 + c * 46, 70 + s2 * 46], [320 + c * 66, 70 + s2 * 66]]); }
+    scribble('#8CC0E8', 7, [[20, 250], [120, 238], [220, 252], [380, 240]]);
+    g.fillStyle = '#F29A86'; g.fillRect(90, 150, 110, 90);
+    g.fillStyle = '#E0735F'; g.beginPath(); g.moveTo(80, 152); g.lineTo(145, 95); g.lineTo(210, 152); g.closePath(); g.fill();
+    g.fillStyle = '#8CC0E8'; g.fillRect(112, 172, 26, 26);
+    g.fillStyle = '#F7D774'; g.fillRect(155, 190, 26, 50);
+    scribble('#B79BE0', 5, [[40, 60], [70, 48], [100, 62]]);
+  });
+  const paper = addMesh(new THREE.PlaneGeometry(2.1, 1.58), new THREE.MeshStandardMaterial({ map: art, roughness: 0.9 }), [-2.75, 3.85, ROOM.wallZ + 0.02], [0, 0, 0.06], { cast: false });
+  const tape = new THREE.MeshStandardMaterial({ color: '#F3E6B5', roughness: 0.8, transparent: true, opacity: 0.85 });
+  addMesh(new THREE.PlaneGeometry(0.46, 0.16), tape, [-3.7, 4.55, ROOM.wallZ + 0.03], [0, 0, 0.5], { cast: false });
+  addMesh(new THREE.PlaneGeometry(0.46, 0.16), tape, [-1.72, 4.68, ROOM.wallZ + 0.03], [0, 0, -0.35], { cast: false });
+}
+
+// wall shelf on the left (the wall behind the graph stays clean): books + a toy rocket
+{
+  const y = 5.55, z = ROOM.wallZ + 0.55;
+  addMesh(rbox(3.9, 0.2, 1.1, 0.05), RM.white, [-2.35, y, z]);
+  for (const x of [-3.95, -0.75]) addMesh(rbox(0.14, 0.6, 0.9, 0.04), RM.white, [x, y - 0.4, z]);
+  const books = [[-3.95, 0.36, 1.75, RM.coral, 0], [-3.57, 0.4, 1.55, RM.sky, 0], [-3.17, 0.34, 1.9, RM.lemon, 0], [-2.68, 0.38, 1.6, RM.lilac, -0.3]];
+  for (const [x, w, h, mat, tilt] of books) addMesh(rbox(w, h, 0.9, 0.05), mat, [x + (tilt ? 0.25 : 0), y + 0.1 + h / 2 * Math.cos(tilt) - (tilt ? 0.03 : 0), z], [0, 0, tilt]);
+  // rocket
+  const rx = -1.3, ry = y + 0.1;
+  const body = new THREE.LatheGeometry([[0.0001, 0], [0.22, 0], [0.3, 0.2], [0.32, 0.7], [0.27, 1.15], [0.0001, 1.2]].map(([a, b]) => new THREE.Vector2(a, b)), 32);
+  addMesh(body, RM.white, [rx, ry + 0.12, z]);
+  addMesh(new THREE.ConeGeometry(0.27, 0.55, 32), RM.coral, [rx, ry + 1.52, z]);
+  addMesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 24), RM.sky, [rx, ry + 0.95, z + 0.3], [Math.PI / 2, 0, 0]);
+  for (let a = 0; a < 3; a++) {
+    const ang = a * 2 * Math.PI / 3 + 0.4;
+    addMesh(rbox(0.06, 0.5, 0.36, 0.02), RM.lemon, [rx + Math.cos(ang) * 0.34, ry + 0.3, z + Math.sin(ang) * 0.34], [0, -ang, 0]);
+  }
+}
+
+
+// stack of books on the desk (left, behind the pig)
+{
+  const stack = [[2.1, 0.34, 1.45, RM.navy, 0.05], [1.9, 0.3, 1.35, RM.coral, -0.1], [1.75, 0.32, 1.3, RM.lemon, 0.14]];
+  let y = 0;
+  for (const [w, h, d, mat, rot] of stack) { addMesh(rbox(w, h, d, 0.05), mat, [-3.45, y + h / 2, -3.7], [0, rot, 0]); y += h; }
+  addMesh(new THREE.SphereGeometry(0.34, 32, 20), RM.sky, [-3.3, y + 0.34, -3.65]);
+}
+
+// pencil cup (right, behind the pig)
+{
+  const cx = 3.9, cz = -3.3;
+  const cup = addMesh(new THREE.CylinderGeometry(0.5, 0.46, 1.3, 40, 1, true), RM.sky.clone(), [cx, 0.65, cz]);
+  cup.material.side = THREE.DoubleSide;
+  addMesh(new THREE.CylinderGeometry(0.46, 0.46, 0.06, 40), RM.sky, [cx, 0.03, cz]);
+  const cols = [RM.coral, RM.lemon, RM.lilac, RM.navy, RM.peach];
+  cols.forEach((mat, i) => {
+    const a = i * 2 * Math.PI / cols.length, tilt = 0.16;
+    const g = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 1.8, 6), mat); shaft.position.y = 0.9;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.24, 6), RM.wood); tip.position.y = 1.92;
+    const lead = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.08, 6), RM.navy); lead.position.y = 2.04;
+    for (const m of [shaft, tip, lead]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
+    g.position.set(cx + Math.cos(a) * 0.2, 0.1 + (i % 2) * 0.12, cz + Math.sin(a) * 0.2);
+    g.rotation.set(Math.sin(a) * tilt, 0, -Math.cos(a) * tilt);
+    scene.add(g);
+  });
+}
 
 // =====================================================================
 //  Materials (clean, glossy, no textures)
@@ -195,12 +309,14 @@ const M = {
   eye: new THREE.MeshPhysicalMaterial({ color: '#221920', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 }),
   slot: new THREE.MeshStandardMaterial({ color: '#3A1C29', roughness: 0.92, envMapIntensity: 0.15 }),
   gold: new THREE.MeshPhysicalMaterial({ color: '#FFC94D', metalness: 0.92, roughness: 0.3, envMapIntensity: 2.1, clearcoat: 0.4, clearcoatRoughness: 0.15 }),
-  green: new THREE.MeshPhysicalMaterial({ color: '#12C95A', roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.05,
-                                         emissive: '#0B7A37', emissiveIntensity: 0.38, envMapIntensity: 0.9 }),
+  green: new THREE.MeshPhysicalMaterial({ color: '#0CA24B', roughness: 0.26, clearcoat: 1, clearcoatRoughness: 0.06,
+                                         emissive: '#06592A', emissiveIntensity: 0.3, envMapIntensity: 0.85 }),
 };
 // inner and edge faces never win a depth tie against the outer skin (keeps seams invisible)
 for (const m of [M.pinkInner, M.pinkEdge]) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 6 });
 const SHELL_MATS = [M.pink, M.pinkInner, M.pinkEdge];
+M.greenSide = M.green.clone();
+Object.assign(M.greenSide, { polygonOffset: true, polygonOffsetFactor: 1.5, polygonOffsetUnits: 4 });
 
 // =====================================================================
 //  Piggy bank — built from separate parts
@@ -495,13 +611,13 @@ for (const [x, z] of LEGS) {
 }
 
 // Inner green glow (anticipation only, no flash)
-const innerLight = new THREE.PointLight('#3BE37F', 0, 2.6, 2);
-innerLight.position.set(0, PIG.cy + 0.25, 0);
+const innerLight = new THREE.PointLight('#3BE37F', 0, 1.25, 2);
+innerLight.position.set(0, PIG.cy + 0.45, 0);
 pigRoot.add(innerLight);
 
 // Contact shadow under the pig
 const contact = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshBasicMaterial({ color: '#4E3C46', map: radialTexture([[0, 1], [0.5, 0.55], [1, 0]]), transparent: true, opacity: 0.34, depthWrite: false }));
+  new THREE.MeshBasicMaterial({ color: '#6A4B3A', map: radialTexture([[0, 1], [0.5, 0.55], [1, 0]]), transparent: true, opacity: 0.3, depthWrite: false }));
 contact.rotation.x = -Math.PI / 2;
 contact.position.y = 0.003;
 contact.renderOrder = -1;
@@ -550,7 +666,7 @@ function pulses(t) { return springStep(t - 4.56, 30, 0.45) * 0.47 + springStep(t
 // Local motion of an attached piece around its own pivot: returns A with  M = pig * A * T(-pivot)
 function attachedPivotMatrix(f, t) {
   const p = pulses(t);
-  const off = f.kind === 'lid' ? new THREE.Vector3(0, 0.03 * p, f.sign * 0.145 * p) : new THREE.Vector3(0, 0.012 * p, 0);
+  const off = f.kind === 'lid' ? new THREE.Vector3(0, 0.035 * p, f.sign * 0.25 * p) : new THREE.Vector3(0, 0.012 * p, 0);
   const rot = f.kind === 'lid' ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), f.sign * 9 * DEG * p) : new THREE.Quaternion();
   return pigMatrix(t).multiply(new THREE.Matrix4().compose(f.pivotLocal.clone().add(off), rot, new THREE.Vector3(1, 1, 1)));
 }
@@ -614,18 +730,19 @@ function flightMatrix(f, t) {
 // =====================================================================
 //  Growth graph — a 3D path; only a growing portion is shown
 // =====================================================================
-const GRAPH_R = 0.2, NODE_R = 0.3, NODE_R_LAST = 0.34;
+// Sharp profile: rectangular cross-section, mitred corners, straight cut at the tip.
+const GRAPH_W = 0.24, GRAPH_D = 0.18;                  // half width (in the chart plane) / half depth
 const GP = [
-  [-0.177, 0.75, 0], [0.12, 3.1, 0], [0.50, 2.62, 0], [0.95, 4.15, 0],
-  [1.32, 3.70, 0], [1.74, 5.25, 0], [2.06, 4.84, 0], [2.52, 6.55, 0],
+  [-0.35, 0.75, 0], [0.25, 3.15, 0], [0.85, 2.78, 0], [1.55, 4.15, 0],
+  [2.10, 3.80, 0], [2.80, 5.20, 0], [3.30, 4.88, 0], [4.00, 6.55, 0],
 ].map(p => new THREE.Vector3(...p));
-const isPeak = i => i % 2 === 1;                        // P1, P3, P5, P7 carry nodes
+const isPeak = i => i % 2 === 1;                        // P1, P3, P5, P7 get the overshoot
 const segLen = [], cum = [0];
 for (let i = 0; i < GP.length - 1; i++) { segLen.push(GP[i].distanceTo(GP[i + 1])); cum.push(cum[i] + segLen[i]); }
 const L = cum[cum.length - 1];
 const sAtY = y => (y - GP[0].y) / (GP[1].y - GP[0].y) * segLen[0];
 const TK = [4.45, 4.70, 4.90, 5.00, 5.18, 5.75, 6.35, 6.62, 6.98, 7.14, 7.45];
-const SK = [0, sAtY(1.75), sAtY(2.33), sAtY(2.46), cum[1], cum[2], cum[3], cum[4], cum[5], cum[6], cum[7]];
+const SK = [0, sAtY(1.75), sAtY(2.5), sAtY(2.63), cum[1], cum[2], cum[3], cum[4], cum[5], cum[6], cum[7]];
 const NODE_T = [null, ...TK.slice(4)];                 // time each vertex is reached
 const END_SLOPE = 2.0, END_W = 16, END_Z = 0.4;
 const growthCurve = monotoneCubic(TK, SK, END_SLOPE);
@@ -644,36 +761,124 @@ function pointAt(s, out = new THREE.Vector3()) {
   let i = 0; while (i < segLen.length - 1 && s > cum[i + 1]) i++;
   return out.copy(GP[i]).lerp(GP[i + 1], clamp((s - cum[i]) / segLen[i], 0, 1));
 }
-function nodeScale(i, t) { return NODE_T[i] == null || !isPeak(i) ? 0 : springStep(t - NODE_T[i] + 0.015, 20, 0.5); }
 function graphBreath(t) { return 1 + 0.004 * Math.sin(2 * Math.PI * (t - 8.5) / 2.2) * smoothstep(8.5, 9.1, t); }
+// Each peak springs slightly past its value when it is reached, then settles.
+const PEAK_OV = 0.2;
+function peakOffset(i, t) { return isPeak(i) && i < GP.length - 1 ? PEAK_OV * springImpulse(t - NODE_T[i], 15, 0.42) : 0; }
 
+const perp = d => new THREE.Vector3(-d.y, d.x, 0);
+// static miter extent of every vertex (for framing bounds)
+const MITER = GP.map((p, i) => {
+  if (i === 0 || i === GP.length - 1) return GRAPH_W;
+  const n1 = perp(GP[i].clone().sub(GP[i - 1]).normalize()), n2 = perp(GP[i + 1].clone().sub(GP[i]).normalize());
+  const m = n1.clone().add(n2).normalize();
+  return GRAPH_W / Math.max(m.dot(n1), 0.25);
+});
+
+const GRAPH_YAW = 22 * DEG;
+const GRAPH_AXIS = new THREE.Vector3(GP[0].x + (GP[1].x - GP[0].x) * (2.3 - GP[0].y) / (GP[1].y - GP[0].y), GP[0].y, 0);  // path point at slot height
+function graphMatrix(breath = 1) {
+  const c = GRAPH_AXIS;
+  return new THREE.Matrix4().makeTranslation(c.x, c.y, c.z)
+    .multiply(new THREE.Matrix4().makeRotationY(GRAPH_YAW))
+    .multiply(new THREE.Matrix4().makeScale(breath, breath, breath))
+    .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+}
+const GRAPH_ROT = graphMatrix(1);
 const graphGroup = new THREE.Group();
+graphGroup.matrixAutoUpdate = false;
 scene.add(graphGroup);
-const cylGeo = new THREE.CylinderGeometry(GRAPH_R, GRAPH_R, 1, 40, 1, true); cylGeo.translate(0, 0.5, 0);
-const ballGeo = new THREE.SphereGeometry(1, 40, 28);
-const segMeshes = segLen.map((len, i) => {
-  const m = new THREE.Mesh(cylGeo, M.green); m.castShadow = true; m.receiveShadow = true;
-  m.position.copy(GP[i]);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), GP[i + 1].clone().sub(GP[i]).normalize());
-  graphGroup.add(m); return m;
-});
-const jointMeshes = GP.map((p, i) => {
-  const m = new THREE.Mesh(ballGeo, M.green); m.scale.setScalar(GRAPH_R); m.position.copy(p); m.castShadow = true;
-  graphGroup.add(m); return m;
-});
-const nodeMeshes = GP.map((p, i) => {
-  const m = new THREE.Mesh(ballGeo, M.green); m.position.copy(p); m.castShadow = true; m.receiveShadow = true;
-  graphGroup.add(m); return m;
-});
-const tipMesh = new THREE.Mesh(ballGeo, M.green); tipMesh.scale.setScalar(GRAPH_R); tipMesh.castShadow = true;
-graphGroup.add(tipMesh);
+const G_MAX = 1200;
+const gPos = new Float32Array(G_MAX * 3), gNor = new Float32Array(G_MAX * 3);
+const graphGeo = new THREE.BufferGeometry();
+graphGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3).setUsage(THREE.DynamicDrawUsage));
+graphGeo.setAttribute('normal', new THREE.BufferAttribute(gNor, 3).setUsage(THREE.DynamicDrawUsage));
+const graphMesh = new THREE.Mesh(graphGeo, [M.green, M.greenSide]);
+graphMesh.castShadow = true; graphMesh.receiveShadow = true; graphMesh.frustumCulled = false;
+graphGroup.add(graphMesh);
+
+// Rebuild the visible part of the profile from a polyline (pure function of the points).
+// Each segment is a solid bar with square ends; every corner gets a wedge on its outer side that
+// completes the sharp mitre. Robust for any segment length (no flipped faces while a corner forms).
+function buildGraphGeometry(pts) {
+  const faces = [[], []];                               // [front/back, sides]
+  const _w = new THREE.Vector3(), _c = new THREE.Vector3();
+  const tri = (a, b, c, nrm) => {
+    _c.subVectors(b, a).cross(_w.subVectors(c, a));
+    const g = Math.abs(nrm.z) > 0.99 ? 0 : 1;
+    faces[g].push(_c.dot(nrm) < 0 ? [a, c, b, nrm] : [a, b, c, nrm]);
+  };
+  const quad = (a, b, c, d, nrm) => { tri(a, b, c, nrm); tri(a, c, d, nrm); };
+  const zf = new THREE.Vector3(0, 0, GRAPH_D), zb = new THREE.Vector3(0, 0, -GRAPH_D);
+  const F = v => v.clone().add(zf), B = v => v.clone().add(zb);
+  const front = new THREE.Vector3(0, 0, 1), back = new THREE.Vector3(0, 0, -1);
+  const k = pts.length;
+  if (k < 2) { graphGeo.setDrawRange(0, 0); return; }
+  const dirs = [];
+  for (let i = 0; i < k - 1; i++) {
+    const d = pts[i + 1].clone().sub(pts[i]);
+    dirs.push(d.lengthSq() > 1e-12 ? d.normalize() : (dirs[i - 1] || new THREE.Vector3(0, 1, 0)).clone());
+  }
+  // bars
+  for (let i = 0; i < k - 1; i++) {
+    const S = pts[i], E = pts[i + 1], nn = perp(dirs[i]).multiplyScalar(GRAPH_W);
+    const SL = S.clone().add(nn), SR = S.clone().sub(nn), EL = E.clone().add(nn), ER = E.clone().sub(nn);
+    quad(F(SL), F(SR), F(ER), F(EL), front);
+    quad(B(SL), B(EL), B(ER), B(SR), back);
+    quad(F(SL), F(EL), B(EL), B(SL), perp(dirs[i]));
+    quad(F(SR), B(SR), B(ER), F(ER), perp(dirs[i]).negate());
+    quad(F(SL), B(SL), B(SR), F(SR), dirs[i].clone().negate());
+    quad(F(EL), F(ER), B(ER), B(EL), dirs[i]);
+  }
+  // mitre wedges on the outer side of every corner
+  for (let i = 1; i < k - 1; i++) {
+    const d0 = dirs[i - 1], d1 = dirs[i];
+    const turn = d0.x * d1.y - d0.y * d1.x;
+    if (Math.abs(turn) < 1e-4) continue;
+    const so = turn > 0 ? -1 : 1;                        // outer side of the bend
+    const Q = pts[i];
+    const n0 = perp(d0).multiplyScalar(so), n1 = perp(d1).multiplyScalar(so);
+    const A = Q.clone().addScaledVector(n0, GRAPH_W), Bq = Q.clone().addScaledVector(n1, GRAPH_W);
+    const m = n0.clone().add(n1).normalize();
+    let M = Q.clone().addScaledVector(m, GRAPH_W / Math.max(m.dot(n0), 0.34));
+    if (i === k - 2) {                                   // corner right behind the tip grows in
+      const w = smoothstep(0, 2.5 * GRAPH_W, pts[k - 1].distanceTo(pts[k - 2]));
+      M = A.clone().add(Bq).multiplyScalar(0.5).lerp(M, w);
+    }
+    tri(F(Q), F(A), F(M), front); tri(F(Q), F(M), F(Bq), front);
+    tri(B(Q), B(A), B(M), back); tri(B(Q), B(M), B(Bq), back);
+    const outN = (P1, P2) => { const e = P2.clone().sub(P1); const nrm = new THREE.Vector3(e.y, -e.x, 0).normalize(); if (nrm.dot(P1.clone().sub(Q)) < 0) nrm.negate(); return nrm; };
+    quad(F(A), F(M), B(M), B(A), outN(A, M));
+    quad(F(M), F(Bq), B(Bq), B(M), outN(M, Bq));
+  }
+  let n = 0;
+  graphGeo.clearGroups();
+  for (let g = 0; g < 2; g++) {
+    const start = n;
+    for (const [a, b, c, nrm] of faces[g]) for (const v of [a, b, c]) {
+      gPos[n * 3] = v.x; gPos[n * 3 + 1] = v.y; gPos[n * 3 + 2] = v.z; gNor[n * 3] = nrm.x; gNor[n * 3 + 1] = nrm.y; gNor[n * 3 + 2] = nrm.z; n++;
+    }
+    graphGeo.addGroup(start, n - start, g);
+  }
+  graphGeo.setDrawRange(0, n);
+  graphGeo.attributes.position.needsUpdate = true;
+  graphGeo.attributes.normal.needsUpdate = true;
+}
+function graphPolyline(s, t) {
+  const pts = [GP[0].clone()];
+  for (let i = 1; i < GP.length; i++) if (cum[i] <= s + 1e-9) pts.push(GP[i].clone().add(new THREE.Vector3(0, peakOffset(i, t), 0)));
+  const tip = pointAt(s);
+  if (tip.distanceTo(pts[pts.length - 1]) > 1e-4) pts.push(tip);
+  return pts;
+}
 
 // Every visible (or soon visible) part of the graph as spheres {p, r}
-function graphBounds(s, withNodes = true) {
+function graphBounds(s) {
   const out = [];
   if (s <= 0) return out;
-  for (let i = 1; i < GP.length; i++) if (cum[i] <= s + 1e-9) out.push({ p: GP[i], r: withNodes && isPeak(i) ? (i === GP.length - 1 ? NODE_R_LAST : NODE_R) * 1.18 : GRAPH_R });
-  out.push({ p: pointAt(s), r: GRAPH_R });
+  const R = r => Math.hypot(r, GRAPH_D);
+  for (let i = 1; i < GP.length; i++) if (cum[i] <= s + 1e-9) out.push({ p: GP[i].clone().applyMatrix4(GRAPH_ROT), r: R(MITER[i]) + (isPeak(i) ? PEAK_OV * 0.7 : 0) });
+  out.push({ p: pointAt(s).applyMatrix4(GRAPH_ROT), r: R(GRAPH_W) });
   return out;
 }
 
@@ -715,9 +920,9 @@ const lerpCam = (a, b, k) => ({ D: lerp(a.D, b.D, k), tx: lerp(a.tx, b.tx, k), t
 // Final framing solved from the complete graph + pig (build time).
 const FINAL_TOP_PX = 336, FINAL_BOTTOM_PX = 1236;
 const CAM_FINAL = (() => {
-  const top = GP[GP.length - 1].clone().add(new THREE.Vector3(0, NODE_R_LAST * 1.18 + 0.08, 0));
+  const top = GP[GP.length - 1].clone().add(new THREE.Vector3(0, 0.3, 0)).applyMatrix4(GRAPH_ROT);
   const bottom = new THREE.Vector3(0.03, 0, 0.98);          // nearest front hoof on the floor
-  let c = { D: 25, tx: 0.55, ty: 3.4, pitch: 8 * DEG };
+  let c = { D: 25, tx: 1.4, ty: 3.4, pitch: 8 * DEG };
   for (let it = 0; it < 40; it++) {
     const f = (cc) => { setCam(scratchCam, cc); return [toPx(top, scratchCam).y - FINAL_TOP_PX, toPx(bottom, scratchCam).y - FINAL_BOTTOM_PX]; };
     const r = f(c);
@@ -877,7 +1082,7 @@ function applyState(t) {
   const air = ps.y / HOP_H;
   contact.scale.set(2.95 * ps.u * ps.sxz * (1 + 0.12 * air), 2.35 * ps.u * ps.sxz * (1 + 0.12 * air), 1);
   contact.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, PIG.yaw));
-  contact.material.opacity = 0.34 * (1 - 0.45 * air);
+  contact.material.opacity = 0.3 * (1 - 0.45 * air);
 
   // coins
   for (const c of coins) {
@@ -889,24 +1094,9 @@ function applyState(t) {
   // graph
   const s = growth(t);
   graphGroup.visible = s > 0;
-  const br = graphBreath(t);
-  graphGroup.scale.setScalar(br);
-  graphGroup.position.copy(GP[0]).multiplyScalar(1 - br);
-  for (let i = 0; i < segMeshes.length; i++) {
-    const last = i === segMeshes.length - 1;
-    const vl = last ? Math.max(0, s - cum[i]) : clamp(s - cum[i], 0, segLen[i]);
-    segMeshes[i].visible = vl > 1e-4;
-    segMeshes[i].scale.set(1, Math.max(vl, 1e-4), 1);
-  }
-  for (let i = 1; i < GP.length; i++) {
-    jointMeshes[i].visible = s >= cum[i];
-    const ns = nodeScale(i, t) * (i === GP.length - 1 ? NODE_R_LAST : NODE_R);
-    nodeMeshes[i].visible = ns > 1e-3;
-    nodeMeshes[i].scale.setScalar(Math.max(ns, 1e-4));
-  }
-  jointMeshes[0].visible = false; nodeMeshes[0].visible = false;
-  tipMesh.visible = s > 0;
-  pointAt(s, tipMesh.position);
+  graphGroup.matrix.copy(graphMatrix(graphBreath(t)));
+  graphGroup.matrixWorldNeedsUpdate = true;
+  if (s > 0) buildGraphGeometry(graphPolyline(s, t));
 
   // camera
   const c = camAt(t);
@@ -988,9 +1178,9 @@ function runChecks() {
     const t = k / 60;
     const st = applyState(t);
     // graph inside safe area
-    for (const b of graphBounds(st.s, true)) {
+    for (const b of graphBounds(st.s)) {
       if (t < 5.0) break;
-      const e = sphereExtents({ p: b.p.clone().sub(GP[0]).multiplyScalar(graphBreath(t)).add(GP[0]), r: b.r }, camera);
+      const e = sphereExtents({ p: b.p.clone().sub(GRAPH_AXIS).multiplyScalar(graphBreath(t)).add(GRAPH_AXIS), r: b.r }, camera);
       stats.graphMinTop = Math.min(stats.graphMinTop, e.y0);
       stats.graphMaxRight = Math.max(stats.graphMaxRight, e.x1);
       stats.graphMinLeft = Math.min(stats.graphMinLeft, e.x0);
@@ -1017,7 +1207,7 @@ function runChecks() {
     }
     // headline vs graph/pig overlap once visible
     if (t >= 8.5 && TEXT) {
-      for (const b of graphBounds(st.s, true)) {
+      for (const b of graphBounds(st.s)) {
         const e = sphereExtents(b, camera);
         if (e.y1 > TEXT.box.top - 8 && e.x1 > TEXT.box.left && e.x0 < TEXT.box.right) issues.push(`t=${t.toFixed(3)} graph overlaps headline`);
       }
