@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080, height=1920">
+<title>Piggy Growth</title>
+<style>
+  @font-face {
+    font-family: "Rubik Local";
+    src: url("fonts/Rubik-Black.ttf") format("truetype");
+    font-weight: 900;
+    font-style: normal;
+    font-display: block;
+  }
+  :root { --bg: #F3F4F6; --ink: #12151C; --grow: #0E9F4A; }
+  html, body { margin: 0; padding: 0; width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); }
+  #stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); }
+  #c { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; display: block; }
+  #headline {
+    position: absolute; left: 0; top: 0; width: 1080px; margin: 0;
+    direction: rtl; unicode-bidi: isolate; text-align: center;
+    font-family: "Rubik Local", sans-serif; font-weight: 900; color: var(--ink);
+    line-height: 1.1; letter-spacing: 0; white-space: nowrap; opacity: 0;
+    text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased;
+  }
+  #headline .line { display: block; width: fit-content; margin: 0 auto; }
+  #headline .grow { color: var(--grow); }
+  #guides { position: absolute; inset: 0; pointer-events: none; display: none; }
+  #guides.on { display: block; }
+  #guides .safe { position: absolute; left: 80px; right: 80px; top: 250px; bottom: 350px; border: 2px dashed rgba(230, 0, 90, .75); }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "./node_modules/three/build/three.module.js",
+    "three/addons/": "./node_modules/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c" width="1080" height="1920"></canvas>
+  <div id="headline" dir="rtl"><span class="line">הכסף שלך</span><span class="line">יכול <span class="grow">לגדול</span></span></div>
+  <div id="guides"><div class="safe"></div></div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// =====================================================================
+//  Constants
+// =====================================================================
+const W = 1080, H = 1920, DURATION = 10;
+const SAFE = { top: 250, bottom: H - 350, left: 80, right: W - 80 };
+const MOTION_MARGIN = 34;              // extra px kept free while the camera moves
+const FOV = 32;
+const GRAVITY = 14;
+const params = new URLSearchParams(location.search);
+if (params.has('guides')) document.getElementById('guides').classList.add('on');
+
+const DEG = Math.PI / 180;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+const easeOutCubic = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
+
+// Deterministic PRNG. Used ONLY while building the scene.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(20260930);
+const rand = (a, b) => a + (b - a) * rng();
+
+// Closed-form spring responses (no integration, no state).
+function springStep(tau, omega, zeta = 1) {         // 0 -> 1 step response
+  if (tau <= 0) return 0;
+  if (zeta >= 1) return 1 - (1 + omega * tau) * Math.exp(-omega * tau);
+  const wd = omega * Math.sqrt(1 - zeta * zeta);
+  const e = Math.exp(-zeta * omega * tau);
+  return 1 - e * (Math.cos(wd * tau) + (zeta * omega / wd) * Math.sin(wd * tau));
+}
+function springImpulse(tau, omega, zeta) {          // starts at 0, decays to 0
+  if (tau <= 0) return 0;
+  const wd = omega * Math.sqrt(1 - zeta * zeta);
+  return Math.exp(-zeta * omega * tau) * Math.sin(wd * tau);
+}
+
+// Monotone cubic (Fritsch–Carlson) through knots, starting from rest.
+function monotoneCubic(xs, ys, endSlope) {
+  const n = xs.length, d = [], m = new Array(n);
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  m[0] = 0;
+  m[n - 1] = Math.min(endSlope, 3 * d[n - 2]);
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i - 1] * d[i] <= 0) { m[i] = 0; continue; }
+    const h0 = xs[i] - xs[i - 1], h1 = xs[i + 1] - xs[i];
+    const w1 = 2 * h1 + h0, w2 = h1 + 2 * h0;
+    m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]);
+  }
+  return (x) => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0; while (x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i], u = (x - xs[i]) / h;
+    const u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * ys[i] + (u3 - 2 * u2 + u) * h * m[i]
+         + (-2 * u3 + 3 * u2) * ys[i + 1] + (u3 - u2) * h * m[i + 1];
+  };
+}
+
+// =====================================================================
+//  Renderer / scene / lights
+// =====================================================================
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+
+const scene = new THREE.Scene();
+const BG = new THREE.Color('#F3F4F6');
+scene.background = BG;
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+const camera = new THREE.PerspectiveCamera(FOV, W / H, 0.1, 300);
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#eadfe4', 0.85));
+
+const keyLight = new THREE.DirectionalLight('#fff4ec', 2.3);          // big soft key
+keyLight.position.set(-5.5, 10, 7);
+keyLight.target.position.set(0.6, 1.8, 0);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+Object.assign(keyLight.shadow.camera, { left: -8, right: 8, top: 9, bottom: -7, near: 1, far: 40 });
+keyLight.shadow.radius = 7;
+keyLight.shadow.bias = -0.0004;
+keyLight.shadow.normalBias = 0.025;
+scene.add(keyLight, keyLight.target);
+
+const fillLight = new THREE.DirectionalLight('#eaf1ff', 0.55);       // weak fill
+fillLight.position.set(8, 3, 5);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight('#ffffff', 1.5);          // subtle rim
+rimLight.position.set(3, 6, -9);
+scene.add(rimLight);
+
+// Soft "infinite floor": only shadows + a very gentle pool of tone.
+function radialTexture(stops) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  for (const [o, a] of stops) gr.addColorStop(o, `rgba(255,255,255,${a})`);
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const floorShadow = new THREE.Mesh(new THREE.PlaneGeometry(80, 80),
+  new THREE.ShadowMaterial({ color: '#5A4650', opacity: 0.15 }));
+floorShadow.rotation.x = -Math.PI / 2;
+floorShadow.receiveShadow = true;
+scene.add(floorShadow);
+
+const floorPool = new THREE.Mesh(new THREE.CircleGeometry(14, 96),
+  new THREE.MeshBasicMaterial({ color: '#E4E1E7', map: radialTexture([[0, 0.42], [0.35, 0.26], [1, 0]]), transparent: true, depthWrite: false }));
+floorPool.rotation.x = -Math.PI / 2;
+floorPool.position.y = 0.001;
+floorPool.renderOrder = -2;
+scene.add(floorPool);
+
+// =====================================================================
+//  Materials (clean, glossy, no textures)
+// =====================================================================
+const M = {
+  pink: new THREE.MeshPhysicalMaterial({ color: '#F6A3BA', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.09, envMapIntensity: 0.9 }),
+  pinkInner: new THREE.MeshStandardMaterial({ color: '#C9687F', roughness: 0.7, envMapIntensity: 0.35 }),
+  pinkEdge: new THREE.MeshStandardMaterial({ color: '#EE98AE', roughness: 0.55, envMapIntensity: 0.6 }),
+  snout: new THREE.MeshPhysicalMaterial({ color: '#EC7E9D', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 0.9 }),
+  earInner: new THREE.MeshPhysicalMaterial({ color: '#EC839F', roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
+  nostril: new THREE.MeshStandardMaterial({ color: '#A8465F', roughness: 0.6 }),
+  eye: new THREE.MeshPhysicalMaterial({ color: '#221920', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 }),
+  slot: new THREE.MeshStandardMaterial({ color: '#3A1C29', roughness: 0.92, envMapIntensity: 0.15 }),
+  gold: new THREE.MeshPhysicalMaterial({ color: '#FFC94D', metalness: 0.92, roughness: 0.3, envMapIntensity: 2.1, clearcoat: 0.4, clearcoatRoughness: 0.15 }),
+  green: new THREE.MeshPhysicalMaterial({ color: '#12C95A', roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.05,
+                                         emissive: '#0B7A37', emissiveIntensity: 0.38, envMapIntensity: 0.9 }),
+};
+// inner and edge faces never win a depth tie against the outer skin (keeps seams invisible)
+for (const m of [M.pinkInner, M.pinkEdge]) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 6 });
+const SHELL_MATS = [M.pink, M.pinkInner, M.pinkEdge];
+
+// =====================================================================
+//  Piggy bank — built from separate parts
+// =====================================================================
+const PIG = { cy: 1.1, sx: 1.3, sy: 1.05, sz: 1.05, thick: 0.065, yaw: -125 * DEG };
+const LID_TH = 12 * 0.025, RING_TH = 26 * 0.025;       // lid cap / petal ring polar limits (on the shell grid)
+const SLOT = { a: 0.2, r: 0.055, rimR: 0.085, tube: 0.024 };
+const HOP_T = 0.42, HOP_H = 0.16;
+
+function ellPoint(th, ph, k = 0, out = new THREE.Vector3()) {
+  return out.set((PIG.sx - k) * Math.sin(th) * Math.cos(ph), PIG.cy + (PIG.sy - k) * Math.cos(th), (PIG.sz - k) * Math.sin(th) * Math.sin(ph));
+}
+function ellNormal(th, ph, k = 0, out = new THREE.Vector3()) {
+  const sx = PIG.sx - k, sy = PIG.sy - k, sz = PIG.sz - k;
+  const x = sx * Math.sin(th) * Math.cos(ph), y = sy * Math.cos(th), z = sz * Math.sin(th) * Math.sin(ph);
+  return out.set(x / (sx * sx), y / (sy * sy), z / (sz * sz)).normalize();
+}
+const surfY = (x, z) => PIG.cy + PIG.sy * Math.sqrt(Math.max(0, 1 - (x / PIG.sx) ** 2 - (z / PIG.sz) ** 2));
+function surfNormalXZ(x, z, out = new THREE.Vector3()) {
+  const y = surfY(x, z) - PIG.cy;
+  return out.set(x / PIG.sx ** 2, y / PIG.sy ** 2, z / PIG.sz ** 2).normalize();
+}
+
+// A shell patch of the ellipsoid with real thickness: outer, inner and edge faces.
+// All pieces share one integer grid (theta = k * TH_STEP, phi = whole degrees), so the
+// vertices on a shared seam are bit-identical and the intact shell has no hairline cracks.
+const TH_STEP = 0.025;
+const thK = (k0, k1) => Array.from({ length: k1 - k0 + 1 }, (_, i) => (k0 + i) * TH_STEP);
+const degRange = (d0, d1) => Array.from({ length: d1 - d0 + 1 }, (_, i) => d0 + i);
+const phOf = d => (((d % 360) + 360) % 360) * DEG;
+function buildShell(ths, degs) {
+  const nT = ths.length - 1, nP = degs.length - 1;
+  const full = degs[nP] - degs[0] === 360;
+  const pos = [], nor = [], index = [], groups = [];
+  let vc = 0;
+  const add = (p, n) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); return vc++; };
+  const P = new THREE.Vector3(), N = new THREE.Vector3();
+  const needsFlip = (A, B, C, expected) => new THREE.Vector3().subVectors(C, A).cross(new THREE.Vector3().subVectors(B, A)).dot(expected) < 0;
+  const quad = (a, b, c, d, flip) => { if (!flip) index.push(a, c, b, b, c, d); else index.push(a, b, c, b, d, c); };
+
+  for (const [k, outward, mat] of [[0, true, 0], [PIG.thick, false, 1]]) {
+    const start = index.length, base = vc;
+    for (let i = 0; i <= nT; i++) for (let j = 0; j <= nP; j++) {
+      const th = ths[i], ph = phOf(degs[j]);
+      ellPoint(th, ph, k, P); ellNormal(th, ph, k, N); if (!outward) N.negate(); add(P, N);
+    }
+    const mi = Math.max(1, Math.floor(nT / 2)), mj = Math.floor(nP / 2);
+    const E = ellNormal(ths[mi], phOf(degs[mj]), k); if (!outward) E.negate();
+    const flip = needsFlip(ellPoint(ths[mi], phOf(degs[mj]), k), ellPoint(ths[mi], phOf(degs[mj + 1]), k), ellPoint(ths[mi + 1], phOf(degs[mj]), k), E);
+    for (let i = 0; i < nT; i++) for (let j = 0; j < nP; j++) {
+      const a = base + i * (nP + 1) + j; quad(a, a + 1, a + nP + 1, a + nP + 2, flip);
+    }
+    groups.push([start, index.length - start, mat]);
+  }
+
+  const edgeStart = index.length;
+  const edge = (samples, dirFn) => {
+    const base = vc;
+    for (const [th, ph] of samples) { const n = dirFn(th, ph); add(ellPoint(th, ph, 0, P), n); add(ellPoint(th, ph, PIG.thick, P), n); }
+    const m = Math.floor((samples.length - 1) / 2);
+    const flip = needsFlip(ellPoint(...samples[m], 0), ellPoint(...samples[m + 1], 0), ellPoint(...samples[m], PIG.thick), dirFn(...samples[m]));
+    for (let i = 0; i < samples.length - 1; i++) quad(base + 2 * i, base + 2 * i + 2, base + 2 * i + 1, base + 2 * i + 3, flip);
+  };
+  const dTh = (th, ph, s) => new THREE.Vector3(PIG.sx * Math.cos(th) * Math.cos(ph), -PIG.sy * Math.sin(th), PIG.sz * Math.cos(th) * Math.sin(ph)).normalize().multiplyScalar(s);
+  const dPh = (th, ph, s) => new THREE.Vector3(-PIG.sx * Math.sin(ph), 0, PIG.sz * Math.cos(ph)).normalize().multiplyScalar(s);
+  if (ths[0] > 1e-6) edge(degs.map(d => [ths[0], phOf(d)]), (th, ph) => dTh(th, ph, -1));
+  if (ths[nT] < Math.PI - 1e-6) edge(degs.map(d => [ths[nT], phOf(d)]), (th, ph) => dTh(th, ph, 1));
+  if (!full) {
+    edge(ths.map(th => [th, phOf(degs[0])]), (th, ph) => dPh(th, ph, -1));
+    edge(ths.map(th => [th, phOf(degs[nP])]), (th, ph) => dPh(th, ph, 1));
+  }
+  groups.push([edgeStart, index.length - edgeStart, 2]);
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(index);
+  for (const [st, c, m] of groups) g.addGroup(st, c, m);
+  return g;
+}
+function shellMesh(geo) {
+  const m = new THREE.Mesh(geo, SHELL_MATS); m.castShadow = true; m.receiveShadow = true; return m;
+}
+function avgOuterNormal(ths, degs) {
+  const v = new THREE.Vector3();
+  for (const th of ths) for (const d of degs) v.add(ellNormal(th, phOf(d)));
+  return v.normalize();
+}
+function centroidOf(geo) { geo.computeBoundingBox(); return geo.boundingBox.getCenter(new THREE.Vector3()); }
+
+const pigRoot = new THREE.Group();
+scene.add(pigRoot);
+
+// Lower body (stays) -------------------------------------------------
+{
+  const ths = [RING_TH];
+  for (let th = RING_TH + 0.05; th < Math.PI - 0.02; th += 0.05) ths.push(th);
+  ths.push(Math.PI);
+  pigRoot.add(shellMesh(buildShell(ths, degRange(0, 360))));
+}
+
+// Petals of the ring (open outward on hinges) --------------------------
+// World azimuth alpha (whole degrees) maps to local phi = alpha + yaw (yaw = -125 deg).
+const YAW_DEG = -125;
+const SEAM_HALF_DEG = 8;
+const seamDeg = [90, 210, 330].map(a => a + YAW_DEG);   // front seam faces the camera
+const K_LID = 12, K_MID = 19, K_RING = 26;               // 0.30, 0.475, 0.65
+const petals = [];
+const petalRest = [74 * DEG, 80 * DEG, 76 * DEG];
+const petalDelay = [0.0, 0.02, 0.012];
+for (let i = 0; i < 3; i++) {
+  const d0 = seamDeg[i] + SEAM_HALF_DEG, d1 = seamDeg[(i + 1) % 3] + (i === 2 ? 360 : 0) - SEAM_HALF_DEG;
+  const phc = phOf((d0 + d1) / 2);
+  const mesh = shellMesh(buildShell(thK(K_LID, K_RING), degRange(d0, d1)));
+  mesh.matrixAutoUpdate = false;                         // identity until it cracks
+  const hinge = ellPoint(RING_TH, phc);
+  const axis = new THREE.Vector3(-PIG.sx * Math.sin(phc), 0, PIG.sz * Math.cos(phc)).normalize();
+  // choose the rotation sign that swings the petal's top outward
+  const top = ellPoint(LID_TH, phc).sub(hinge);
+  const radial = new THREE.Vector3(Math.cos(phc), 0, Math.sin(phc));
+  const sign = top.clone().applyAxisAngle(axis, 0.2).dot(radial) > top.dot(radial) ? 1 : -1;
+  pigRoot.add(mesh);
+  petals.push({ mesh, hinge, axis, sign, rest: petalRest[i], delay: petalDelay[i] });
+}
+function hingeMatrix(p, angle) {
+  if (angle === 0) return new THREE.Matrix4();
+  return new THREE.Matrix4().makeTranslation(p.hinge.x, p.hinge.y, p.hinge.z)
+    .multiply(new THREE.Matrix4().makeRotationAxis(p.axis, p.sign * angle))
+    .multiply(new THREE.Matrix4().makeTranslation(-p.hinge.x, -p.hinge.y, -p.hinge.z));
+}
+
+// Flying pieces: two lid halves (carrying the slot) + six seam shards ----
+// Geometry stays in pig-local coordinates; transforms are computed from t.
+const flyers = [];
+function makeFlyer(geo, extraMeshes, launch, vel, spinAxis, spinRate, restYaw, avgN) {
+  const pivotLocal = centroidOf(geo);
+  const obj = new THREE.Group();
+  obj.matrixAutoUpdate = false;
+  obj.add(shellMesh(geo));
+  for (const m of extraMeshes) obj.add(m);
+  scene.add(obj);
+  const f = { obj, pivotLocal, launch, vel, spinAxis: spinAxis.normalize(), spinRate, restYaw, avgN, geo, extra: extraMeshes };
+  flyers.push(f);
+  return f;
+}
+
+// slot dark recess + raised rim, per lid half (sign = +1 for z>0, -1 for z<0)
+function slotHalfMeshes(sign) {
+  const nx = 36, nv = 4, { a, r } = SLOT;
+  const pos = [], nor = [], idx = [];
+  const n = new THREE.Vector3();
+  for (let i = 0; i <= nx; i++) {
+    const x = lerp(-a - r, a + r, i / nx);
+    const zmax = Math.abs(x) <= a ? r : Math.sqrt(Math.max(0, r * r - (Math.abs(x) - a) ** 2));
+    for (let j = 0; j <= nv; j++) {
+      const z = sign * zmax * (j / nv);
+      pos.push(x, surfY(x, z) + 0.0035, z);
+      surfNormalXZ(x, z, n); nor.push(n.x, n.y, n.z);
+    }
+  }
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nv; j++) {
+    const p = i * (nv + 1) + j, q = p + nv + 1;
+    idx.push(p, p + 1, q, q, p + 1, q + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  // make sure the recess faces up
+  const tri = [0, 1, 2].map(k => new THREE.Vector3(pos[idx[k] * 3], pos[idx[k] * 3 + 1], pos[idx[k] * 3 + 2]));
+  const fn = new THREE.Vector3().subVectors(tri[1], tri[0]).cross(new THREE.Vector3().subVectors(tri[2], tri[0]));
+  if (fn.y < 0) for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; }
+  g.setIndex(idx);
+  const dark = new THREE.Mesh(g, M.slot);
+  dark.receiveShadow = true;
+
+  const R = SLOT.rimR, pts = [];
+  for (let k = 0; k <= 10; k++) { const b = Math.PI - (Math.PI / 2) * (k / 10); pts.push([-a + R * Math.cos(b), R * Math.sin(b)]); }
+  for (let k = 1; k < 10; k++) pts.push([lerp(-a, a, k / 10), R]);
+  for (let k = 0; k <= 10; k++) { const b = (Math.PI / 2) * (1 - k / 10); pts.push([a + R * Math.cos(b), R * Math.sin(b)]); }
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, surfY(x, sign * z) + 0.01, sign * z)), false, 'centripetal');
+  const rim = new THREE.Mesh(new THREE.TubeGeometry(curve, 80, SLOT.tube, 12, false), M.pink);
+  rim.castShadow = true; rim.receiveShadow = true;
+  const capGeo = new THREE.SphereGeometry(SLOT.tube, 12, 8);
+  const c0 = new THREE.Mesh(capGeo, M.pink); c0.position.copy(curve.getPoint(0));
+  const c1 = new THREE.Mesh(capGeo, M.pink); c1.position.copy(curve.getPoint(1));
+  return [dark, rim, c0, c1];
+}
+
+const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), PIG.yaw);
+const toWorldDir = v => v.clone().applyQuaternion(yawQ);
+const lidHalves = [];
+for (const sign of [1, -1]) {
+  const degs = sign > 0 ? degRange(0, 180) : degRange(180, 360);
+  const outward = toWorldDir(new THREE.Vector3(0, 0, sign));
+  const vel = outward.clone().multiplyScalar(sign > 0 ? 1.45 : 1.15).add(new THREE.Vector3(0, sign > 0 ? 6.1 : 6.5, sign > 0 ? -1.9 : -3.2));
+  const f = makeFlyer(buildShell(thK(0, K_LID), degs), slotHalfMeshes(sign), sign > 0 ? 5.0 : 5.015, vel,
+    toWorldDir(new THREE.Vector3(1, 0, 0)).add(new THREE.Vector3(0, 0.25 * sign, 0)), sign > 0 ? 5.2 : -6.0,
+    sign > 0 ? 0.6 : -0.9, avgOuterNormal(thK(0, K_LID), degs));
+  f.kind = 'lid'; f.sign = sign;
+  lidHalves.push(f);
+}
+const shards = [];
+for (let i = 0; i < 3; i++) {
+  for (const [k0, k1] of [[K_LID, K_MID], [K_MID, K_RING]]) {
+    const degs = degRange(seamDeg[i] - SEAM_HALF_DEG, seamDeg[i] + SEAM_HALF_DEG);
+    const radial = toWorldDir(new THREE.Vector3(Math.cos(phOf(seamDeg[i])), 0, Math.sin(phOf(seamDeg[i]))));
+    const vel = radial.multiplyScalar(rand(1.2, 2.1)).add(new THREE.Vector3(rand(-0.35, 0.35), rand(4.6, 6.4), -rand(2.5, 3.4)));
+    const axis = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1));
+    const f = makeFlyer(buildShell(thK(k0, k1), degs), [], 5.0 + rand(0, 0.045), vel, axis, rand(7, 12) * (rng() < 0.5 ? -1 : 1),
+      rand(-Math.PI, Math.PI), avgOuterNormal(thK(k0, k1), degs));
+    f.kind = 'shard';
+    shards.push(f);
+  }
+}
+
+// Snout -----------------------------------------------------------------
+function roundedPuck(R, D, f, seg = 48) {
+  const pts = [new THREE.Vector2(0.0001, D / 2)];
+  pts.push(new THREE.Vector2(R - f, D / 2));
+  for (let k = 1; k <= 8; k++) { const b = Math.PI / 2 * (1 - k / 8); pts.push(new THREE.Vector2(R - f + f * Math.cos(b), D / 2 - f + f * Math.sin(b))); }
+  pts.push(new THREE.Vector2(R, -D / 2), new THREE.Vector2(0.0001, -D / 2));
+  return new THREE.LatheGeometry(pts, seg);
+}
+const snoutGeo = roundedPuck(0.32, 0.4, 0.11); snoutGeo.rotateZ(-Math.PI / 2);
+const snout = new THREE.Mesh(snoutGeo, M.snout);
+snout.position.set(1.36, PIG.cy - 0.07, 0); snout.castShadow = true; snout.receiveShadow = true;
+pigRoot.add(snout);
+for (const s of [-1, 1]) {
+  const n = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), M.nostril);
+  n.scale.set(0.02, 0.085, 0.056); n.position.set(1.558, PIG.cy - 0.06, s * 0.105);
+  pigRoot.add(n);
+}
+
+// Eyes --------------------------------------------------------------------
+for (const s of [-1, 1]) {
+  const p = ellPoint(1.2, s * 0.3), nrm = ellNormal(1.2, s * 0.3);
+  const e = new THREE.Mesh(new THREE.SphereGeometry(0.068, 24, 16), M.eye);
+  e.position.copy(p).addScaledVector(nrm, -0.012);
+  e.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nrm);
+  e.scale.set(1, 1, 0.55);
+  pigRoot.add(e);
+}
+
+// Ears (rounded triangles) -------------------------------------------------
+function earGeometry() {
+  const g = new THREE.SphereGeometry(1, 32, 20);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i); const k = 1 - 0.42 * Math.max(0, y) * Math.max(0, y);
+    p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+const earGeo = earGeometry();
+for (const s of [-1, 1]) {
+  const th = 1.0, ph = s * 0.55;
+  const base = ellPoint(th, ph), nrm = ellNormal(th, ph);
+  const yAx = nrm.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, 0.75, 0)).add(new THREE.Vector3(0.3, 0, 0)).normalize();
+  let zAx = new THREE.Vector3(1, 0, 0.35 * s); zAx.addScaledVector(yAx, -zAx.dot(yAx)).normalize();
+  const xAx = new THREE.Vector3().crossVectors(yAx, zAx).normalize();
+  const basis = new THREE.Matrix4().makeBasis(xAx, yAx, zAx);
+  const ear = new THREE.Group();
+  ear.position.copy(base).addScaledVector(yAx, 0.1);
+  ear.quaternion.setFromRotationMatrix(basis);
+  const outer = new THREE.Mesh(earGeo, M.pink); outer.scale.set(0.2, 0.215, 0.075); outer.castShadow = true; outer.receiveShadow = true;
+  const inner = new THREE.Mesh(earGeo, M.earInner); inner.scale.set(0.125, 0.14, 0.03); inner.position.set(0, 0.01, 0.052);
+  ear.add(outer, inner);
+  pigRoot.add(ear);
+}
+
+// Legs --------------------------------------------------------------------
+const LEGS = [[0.6, 0.46], [0.6, -0.46], [-0.6, 0.46], [-0.6, -0.46]], LEG_R = 0.215;
+const legPts = [[0.0001, 0], [0.15, 0], [0.19, 0.014], [0.207, 0.045], [0.212, 0.09], [0.228, 0.44], [0.0001, 0.44]].map(([x, y]) => new THREE.Vector2(x, y));
+const legGeo = new THREE.LatheGeometry(legPts, 40);
+for (const [x, z] of LEGS) {
+  const leg = new THREE.Mesh(legGeo, M.pink); leg.position.set(x, 0, z); leg.castShadow = true; leg.receiveShadow = true;
+  pigRoot.add(leg);
+}
+
+// Tail --------------------------------------------------------------------
+{
+  const pts = [];
+  for (let k = 0; k <= 40; k++) {
+    const u = k / 40, a = u * 2.6 * Math.PI, rr = 0.075 * (1 - 0.3 * u);
+    pts.push(new THREE.Vector3(-1.27 - 0.16 * u, PIG.cy + 0.17 + rr * Math.sin(a), rr * (Math.cos(a) - 1)));
+  }
+  const tail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 80, 0.028, 10, false), M.pink);
+  tail.castShadow = true;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.028, 12, 8), M.pink); cap.position.copy(pts[pts.length - 1]);
+  pigRoot.add(tail, cap);
+}
+
+// Inner green glow (anticipation only, no flash)
+const innerLight = new THREE.PointLight('#3BE37F', 0, 2.6, 2);
+innerLight.position.set(0, PIG.cy + 0.25, 0);
+pigRoot.add(innerLight);
+
+// Contact shadow under the pig
+const contact = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ color: '#4E3C46', map: radialTexture([[0, 1], [0.5, 0.55], [1, 0]]), transparent: true, opacity: 0.34, depthWrite: false }));
+contact.rotation.x = -Math.PI / 2;
+contact.position.y = 0.003;
+contact.renderOrder = -1;
+scene.add(contact);
+
+
+// =====================================================================
+//  Pig motion (pure functions of t)
+// =====================================================================
+const COIN_HITS = [1.50, 1.98, 2.34, 2.62, 2.84, 3.02, 3.18, 3.32, 3.44, 3.55, 3.65, 3.74, 3.82, 3.89, 3.95];
+const coins = COIN_HITS.map((tHit, i) => {
+  const u = i / (COIN_HITS.length - 1);
+  return { i, tHit, T: lerp(0.5, 0.3, u), A: lerp(0.042, 0.022, u), hop: lerp(0.07, 0.035, u),
+           tb: lerp(0.11, 0.065, u), ts: lerp(0.09, 0.06, u) };
+});
+
+function pigSquash(t) {
+  let sq = 0;
+  if (t < HOP_T) sq -= 0.035 * Math.sin(Math.PI * t / HOP_T);
+  sq += 0.075 * springImpulse(t - HOP_T, 19, 0.38);
+  for (const c of coins) sq += c.A * springImpulse(t - c.tHit, 24, 0.35);
+  sq += 0.13 * springImpulse(t - 5.0, 15, 0.32);
+  return sq;
+}
+function pigUniform(t) {
+  let u = 1;
+  for (const c of coins) u += 0.0042 * springStep(t - c.tHit, 10, 0.7);
+  u += -0.045 * springStep(t - 4.0, 12, 0.75);
+  u += 0.095 * springStep(t - 4.42, 11, 0.5);
+  u += -0.05 * springStep(t - 5.0, 8, 0.6);
+  u += -0.035 * springStep(t - 5.1, 5, 0.9);
+  return u;
+}
+function pigState(t) {
+  const sq = pigSquash(t), sy = 1 - sq, sxz = 1 / Math.sqrt(sy), u = pigUniform(t);
+  const y = t < HOP_T ? HOP_H * Math.sin(Math.PI * t / HOP_T) : 0;
+  return { pos: new THREE.Vector3(0, y, 0), quat: yawQ.clone(), scale: new THREE.Vector3(u * sxz, u * sy, u * sxz), u, sy, sxz, y };
+}
+function pigMatrix(t) {
+  const s = pigState(t);
+  return new THREE.Matrix4().compose(s.pos, s.quat, s.scale);
+}
+
+// Lid halves while still attached (slot opening during anticipation)
+function pulses(t) { return springStep(t - 4.56, 30, 0.45) * 0.47 + springStep(t - 4.79, 30, 0.45) * 0.53; }
+// Local motion of an attached piece around its own pivot: returns A with  M = pig * A * T(-pivot)
+function attachedPivotMatrix(f, t) {
+  const p = pulses(t);
+  const off = f.kind === 'lid' ? new THREE.Vector3(0, 0.03 * p, f.sign * 0.145 * p) : new THREE.Vector3(0, 0.012 * p, 0);
+  const rot = f.kind === 'lid' ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), f.sign * 9 * DEG * p) : new THREE.Quaternion();
+  return pigMatrix(t).multiply(new THREE.Matrix4().compose(f.pivotLocal.clone().add(off), rot, new THREE.Vector3(1, 1, 1)));
+}
+function attachedMatrix(f, t) {
+  if (pulses(t) === 0) return pigMatrix(t);             // bit-identical to the body -> sealed seams
+  const pv = f.pivotLocal;
+  return attachedPivotMatrix(f, t).multiply(new THREE.Matrix4().makeTranslation(-pv.x, -pv.y, -pv.z));
+}
+
+// Ballistic flight -> one small bounce -> slide to rest (closed form)
+function prepareFlight(f) {
+  const M0 = attachedPivotMatrix(f, f.launch);
+  const p0 = new THREE.Vector3(), q0 = new THREE.Quaternion(), s0 = new THREE.Vector3();
+  M0.decompose(p0, q0, s0);
+  const nLocal = f.avgN.clone();                                   // piece frame == pig local frame
+  const qRest = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), f.restYaw)
+    .multiply(new THREE.Quaternion().setFromUnitVectors(nLocal, new THREE.Vector3(0, 1, 0)));
+  // resting height from actual geometry
+  let minY = Infinity;
+  const v = new THREE.Vector3();
+  const collect = (geo, offset) => {
+    const pa = geo.attributes.position;
+    for (let i = 0; i < pa.count; i++) {
+      v.fromBufferAttribute(pa, i).add(offset).multiply(s0).applyQuaternion(qRest);
+      minY = Math.min(minY, v.y);
+    }
+  };
+  const pv = f.pivotLocal;
+  collect(f.geo, pv.clone().negate());
+  for (const m of f.extra) collect(m.geometry, m.position.clone().sub(pv));
+  const restH = -minY + 0.002;
+  const vy = f.vel.y, g = GRAVITY;
+  const t1 = (vy + Math.sqrt(vy * vy + 2 * g * (p0.y - restH))) / g;
+  const vImpact = g * t1 - vy;
+  const vb = 0.26 * vImpact, t2 = 2 * vb / g;
+  const vh = new THREE.Vector3(f.vel.x, 0, f.vel.z);
+  Object.assign(f, { p0, q0, s0, qRest, restH, t1, vb, t2, vh, slideT: 0.32 });
+}
+function flightMatrix(f, t) {
+  const tau = t - f.launch;
+  const p = new THREE.Vector3();
+  if (tau <= f.t1) {
+    p.copy(f.p0).addScaledVector(f.vh, tau); p.y = f.p0.y + f.vel.y * tau - 0.5 * GRAVITY * tau * tau;
+  } else if (tau <= f.t1 + f.t2) {
+    const u = tau - f.t1;
+    p.copy(f.p0).addScaledVector(f.vh, f.t1).addScaledVector(f.vh, 0.45 * u);
+    p.y = f.restH + f.vb * u - 0.5 * GRAVITY * u * u;
+  } else {
+    const u = Math.min(tau - f.t1 - f.t2, f.slideT);
+    p.copy(f.p0).addScaledVector(f.vh, f.t1).addScaledVector(f.vh, 0.45 * f.t2)
+      .addScaledVector(f.vh, 0.27 * (u - u * u / (2 * f.slideT)));
+    p.y = f.restH;
+  }
+  const qFly = new THREE.Quaternion().setFromAxisAngle(f.spinAxis, f.spinRate * tau).multiply(f.q0);
+  const w = smoothstep(f.t1 - 0.06, f.t1 + 0.3, tau);
+  const q = qFly.slerp(f.qRest, w);
+  const pv = f.pivotLocal;
+  return new THREE.Matrix4().compose(p, q, f.s0).multiply(new THREE.Matrix4().makeTranslation(-pv.x, -pv.y, -pv.z));
+}
+
+// =====================================================================
+//  Growth graph — a 3D path; only a growing portion is shown
+// =====================================================================
+const GRAPH_R = 0.2, NODE_R = 0.3, NODE_R_LAST = 0.34;
+const GP = [
+  [-0.177, 0.75, 0], [0.12, 3.1, 0], [0.50, 2.62, 0], [0.95, 4.15, 0],
+  [1.32, 3.70, 0], [1.74, 5.25, 0], [2.06, 4.84, 0], [2.52, 6.55, 0],
+].map(p => new THREE.Vector3(...p));
+const isPeak = i => i % 2 === 1;                        // P1, P3, P5, P7 carry nodes
+const segLen = [], cum = [0];
+for (let i = 0; i < GP.length - 1; i++) { segLen.push(GP[i].distanceTo(GP[i + 1])); cum.push(cum[i] + segLen[i]); }
+const L = cum[cum.length - 1];
+const sAtY = y => (y - GP[0].y) / (GP[1].y - GP[0].y) * segLen[0];
+const TK = [4.45, 4.70, 4.90, 5.00, 5.18, 5.75, 6.35, 6.62, 6.98, 7.14, 7.45];
+const SK = [0, sAtY(1.75), sAtY(2.33), sAtY(2.46), cum[1], cum[2], cum[3], cum[4], cum[5], cum[6], cum[7]];
+const NODE_T = [null, ...TK.slice(4)];                 // time each vertex is reached
+const END_SLOPE = 2.0, END_W = 16, END_Z = 0.4;
+const growthCurve = monotoneCubic(TK, SK, END_SLOPE);
+function growth(t) {
+  if (t < TK[0]) return 0;
+  const tEnd = TK[TK.length - 1];
+  if (t <= tEnd) return growthCurve(t);
+  const tau = t - tEnd, wd = END_W * Math.sqrt(1 - END_Z * END_Z);
+  return L + (END_SLOPE / wd) * Math.exp(-END_Z * END_W * tau) * Math.sin(wd * tau);
+}
+function pointAt(s, out = new THREE.Vector3()) {
+  if (s >= L) {
+    const d = GP[GP.length - 1].clone().sub(GP[GP.length - 2]).normalize();
+    return out.copy(GP[GP.length - 1]).addScaledVector(d, s - L);
+  }
+  let i = 0; while (i < segLen.length - 1 && s > cum[i + 1]) i++;
+  return out.copy(GP[i]).lerp(GP[i + 1], clamp((s - cum[i]) / segLen[i], 0, 1));
+}
+function nodeScale(i, t) { return NODE_T[i] == null || !isPeak(i) ? 0 : springStep(t - NODE_T[i] + 0.015, 20, 0.5); }
+function graphBreath(t) { return 1 + 0.004 * Math.sin(2 * Math.PI * (t - 8.5) / 2.2) * smoothstep(8.5, 9.1, t); }
+
+const graphGroup = new THREE.Group();
+scene.add(graphGroup);
+const cylGeo = new THREE.CylinderGeometry(GRAPH_R, GRAPH_R, 1, 40, 1, true); cylGeo.translate(0, 0.5, 0);
+const ballGeo = new THREE.SphereGeometry(1, 40, 28);
+const segMeshes = segLen.map((len, i) => {
+  const m = new THREE.Mesh(cylGeo, M.green); m.castShadow = true; m.receiveShadow = true;
+  m.position.copy(GP[i]);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), GP[i + 1].clone().sub(GP[i]).normalize());
+  graphGroup.add(m); return m;
+});
+const jointMeshes = GP.map((p, i) => {
+  const m = new THREE.Mesh(ballGeo, M.green); m.scale.setScalar(GRAPH_R); m.position.copy(p); m.castShadow = true;
+  graphGroup.add(m); return m;
+});
+const nodeMeshes = GP.map((p, i) => {
+  const m = new THREE.Mesh(ballGeo, M.green); m.position.copy(p); m.castShadow = true; m.receiveShadow = true;
+  graphGroup.add(m); return m;
+});
+const tipMesh = new THREE.Mesh(ballGeo, M.green); tipMesh.scale.setScalar(GRAPH_R); tipMesh.castShadow = true;
+graphGroup.add(tipMesh);
+
+// Every visible (or soon visible) part of the graph as spheres {p, r}
+function graphBounds(s, withNodes = true) {
+  const out = [];
+  if (s <= 0) return out;
+  for (let i = 1; i < GP.length; i++) if (cum[i] <= s + 1e-9) out.push({ p: GP[i], r: withNodes && isPeak(i) ? (i === GP.length - 1 ? NODE_R_LAST : NODE_R) * 1.18 : GRAPH_R });
+  out.push({ p: pointAt(s), r: GRAPH_R });
+  return out;
+}
+
+// =====================================================================
+//  Camera — closed-form spring steps + future-bounds guard
+// =====================================================================
+function setCam(cam, c) {
+  cam.position.set(c.tx, c.ty + c.D * Math.sin(c.pitch), c.D * Math.cos(c.pitch));
+  cam.lookAt(c.tx, c.ty, 0);
+  cam.updateMatrixWorld(true);
+  cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+}
+const scratchCam = new THREE.PerspectiveCamera(FOV, W / H, 0.1, 300);
+const _v = new THREE.Vector3();
+function toPx(p, cam, out = { x: 0, y: 0 }) {
+  _v.copy(p).project(cam);
+  out.x = (_v.x + 1) / 2 * W; out.y = (1 - _v.y) / 2 * H; return out;
+}
+function sphereExtents(b, cam) {
+  const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
+  const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [d, k] of [[right, 1], [right, -1], [up, 1], [up, -1]]) {
+    const q = toPx(_v.copy(b.p).addScaledVector(d, b.r * k), cam, {});
+    x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y);
+  }
+  return { x0, x1, y0, y1 };
+}
+function fits(c, bounds, margin) {
+  setCam(scratchCam, c);
+  for (const b of bounds) {
+    const e = sphereExtents(b, scratchCam);
+    if (e.y0 < SAFE.top + margin || e.x0 < SAFE.left + margin || e.x1 > SAFE.right - margin) return false;
+  }
+  return true;
+}
+const lerpCam = (a, b, k) => ({ D: lerp(a.D, b.D, k), tx: lerp(a.tx, b.tx, k), ty: lerp(a.ty, b.ty, k), pitch: lerp(a.pitch, b.pitch, k) });
+
+// Final framing solved from the complete graph + pig (build time).
+const FINAL_TOP_PX = 336, FINAL_BOTTOM_PX = 1236;
+const CAM_FINAL = (() => {
+  const top = GP[GP.length - 1].clone().add(new THREE.Vector3(0, NODE_R_LAST * 1.18 + 0.08, 0));
+  const bottom = new THREE.Vector3(0.03, 0, 0.98);          // nearest front hoof on the floor
+  let c = { D: 25, tx: 0.55, ty: 3.4, pitch: 8 * DEG };
+  for (let it = 0; it < 40; it++) {
+    const f = (cc) => { setCam(scratchCam, cc); return [toPx(top, scratchCam).y - FINAL_TOP_PX, toPx(bottom, scratchCam).y - FINAL_BOTTOM_PX]; };
+    const r = f(c);
+    if (Math.abs(r[0]) + Math.abs(r[1]) < 0.01) break;
+    const e = 1e-3;
+    const rD = f({ ...c, D: c.D + e }), rY = f({ ...c, ty: c.ty + e });
+    const J = [[(rD[0] - r[0]) / e, (rY[0] - r[0]) / e], [(rD[1] - r[1]) / e, (rY[1] - r[1]) / e]];
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    c.D -= (J[1][1] * r[0] - J[0][1] * r[1]) / det;
+    c.ty -= (-J[1][0] * r[0] + J[0][0] * r[1]) / det;
+  }
+  return c;
+})();
+
+const CAM0 = { D: 12.6, tx: 0, ty: 1.4, pitch: 11 * DEG };
+const D_MID = 17.0, TY_MID = 1.95;
+function camSpring(t) {
+  let D = CAM0.D;
+  D += -0.4 * springStep(t, 1.6);                         // very slow push-in
+  D += -0.5 * springStep(t - 1.0, 1.3);                   // coins: small push-in
+  D += (D_MID - (CAM0.D - 0.9)) * springStep(t - 3.4, 1.8);   // make room before the burst
+  D += (CAM_FINAL.D - D_MID) * springStep(t - 5.0, 2.0);  // follow the growth
+  D += -0.16 * springImpulse(t - 5.0, 12, 0.45);          // tiny impact kick
+  D += 0.015 * CAM_FINAL.D * springStep(t - 9.2, 2.2);    // very gentle push-out
+  let ty = CAM0.ty;
+  ty += (TY_MID - CAM0.ty) * springStep(t - 3.4, 1.8);
+  ty += (CAM_FINAL.ty - TY_MID) * springStep(t - 5.0, 2.0);
+  const tx = CAM0.tx + (CAM_FINAL.tx - CAM0.tx) * springStep(t - 5.0, 1.7);
+  const pitch = CAM0.pitch + (CAM_FINAL.pitch - CAM0.pitch) * springStep(t - 5.0, 1.6);
+  return { D, tx, ty, pitch };
+}
+// Minimal blend toward the final framing so that the FUTURE graph (lookahead) fits.
+const LOOKAHEAD = 0.35;
+function need(t) {
+  const s = growth(Math.min(t + LOOKAHEAD, 9.0));
+  const b = graphBounds(s);
+  if (!b.length) return 0;
+  const cs = camSpring(t);
+  if (fits(cs, b, MOTION_MARGIN)) return 0;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if (fits(lerpCam(cs, CAM_FINAL, mid), b, MOTION_MARGIN)) hi = mid; else lo = mid; }
+  return hi;
+}
+function guardLambda(t) {
+  if (t < 4.6 || t > 9.0) return 0;
+  let acc = 0;
+  for (let i = -2; i <= 2; i++) {
+    let mx = 0;
+    for (let j = 0; j <= 6; j++) mx = Math.max(mx, need(t + i * 0.04 + j * 0.05));
+    acc += mx;
+  }
+  return acc / 5;
+}
+function camAt(t) {
+  const cs = camSpring(t);
+  const k = guardLambda(t);
+  return k > 0 ? lerpCam(cs, CAM_FINAL, k) : cs;
+}
+
+// =====================================================================
+//  Coins — generated once with a fixed seed
+// =====================================================================
+const coinGeo = (() => {
+  const r = 0.16, ht = 0.028, f = 0.013;
+  const pts = [[0.0001, ht - 0.006], [0.118, ht - 0.006], [0.128, ht], [0.146, ht]];
+  for (let k = 0; k <= 6; k++) { const b = Math.PI / 2 * (1 - k / 6); pts.push([r - f + f * Math.cos(b), ht - f + f * Math.sin(b)]); }
+  for (let k = 0; k <= 6; k++) { const b = -Math.PI / 2 * (k / 6); pts.push([r - f + f * Math.cos(b), -ht + f + f * Math.sin(b)]); }
+  pts.push([0.146, -ht], [0.128, -ht], [0.118, -ht + 0.006], [0.0001, -ht + 0.006]);
+  return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 56);
+})();
+const COIN_R = 0.16;
+const slotAlignQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)); // coin face -> pig local Z
+function slotPointLocal(xOff) { return new THREE.Vector3(xOff, surfY(xOff, 0) + COIN_R + 0.004, 0); }
+
+let side = 1;
+for (const c of coins) {
+  c.tSpawn = c.tHit - c.T;
+  c.xOff = c.i === 0 ? 0 : rand(-0.07, 0.07);
+  c.flip = (c.i === 0 ? 1.6 : rand(1.4, 2.8)) * Math.PI * (rng() < 0.5 ? -1 : 1);
+  c.yawWob = rand(-0.5, 0.5);
+  c.wob = rand(5, 9) * DEG * (rng() < 0.5 ? -1 : 1);
+  c.scale = c.i === 0 ? 1.04 : rand(0.95, 1.05);
+  // entry point just above the top frame edge at spawn time
+  setCam(scratchCam, camAt(c.tSpawn));
+  const xn = c.i === 0 ? 0.42 : side * rand(0.22, 0.78);
+  side = -side;
+  const zs = c.i === 0 ? 0.2 : rand(-0.35, 0.45);
+  const p1 = new THREE.Vector3(xn, 1.0, 0.5).unproject(scratchCam);
+  const dir = p1.sub(scratchCam.position).normalize();
+  const k = (zs - scratchCam.position.z) / dir.z;
+  c.S = scratchCam.position.clone().addScaledVector(dir, k).add(new THREE.Vector3(0, COIN_R * 1.6 + 0.12, 0));
+  c.H = slotPointLocal(c.xOff).applyMatrix4(pigMatrix(c.tHit));
+  const T = c.T;
+  c.v0 = c.H.clone().sub(c.S).divideScalar(T).add(new THREE.Vector3(0, 0.5 * GRAVITY * T, 0));
+  c.mesh = new THREE.Mesh(coinGeo, M.gold);
+  c.mesh.castShadow = true; c.mesh.receiveShadow = true;
+  scene.add(c.mesh);
+}
+function coinState(c, t) {
+  if (t < c.tSpawn) return null;
+  const q = new THREE.Quaternion(), p = new THREE.Vector3();
+  let scale = c.scale;
+  const pigQ = yawQ;
+  if (t < c.tHit) {
+    const tau = t - c.tSpawn;
+    p.copy(c.S).addScaledVector(c.v0, tau); p.y -= 0.5 * GRAVITY * tau * tau;
+    const k = 1 - tau / c.T;
+    const flipQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), c.flip * k * k);
+    const yawW = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), c.yawWob * k * k);
+    q.copy(yawW).multiply(pigQ).multiply(flipQ).multiply(slotAlignQ);
+    return { p, q, scale, phase: 'fly' };
+  }
+  const tau = t - c.tHit;
+  if (tau > c.tb + c.ts) return null;
+  const pigM = pigMatrix(t);
+  p.copy(slotPointLocal(c.xOff)).applyMatrix4(pigM);
+  let wobble = 0;
+  if (tau < c.tb) {
+    p.y += c.hop * Math.sin(Math.PI * tau / c.tb);
+    wobble = c.wob * Math.exp(-tau / 0.06) * Math.sin(tau * 55);
+  } else {
+    const u = (tau - c.tb) / c.ts;
+    p.y -= (2 * COIN_R + 0.06) * Math.pow(u, 1.6);
+    scale *= 1 - smoothstep(0.3, 1, u);
+  }
+  const wq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), wobble);
+  q.copy(pigQ).multiply(wq).multiply(slotAlignQ);
+  return { p, q, scale, phase: tau < c.tb ? 'hop' : 'sink' };
+}
+
+// flights need the pig state -> prepare after coins exist
+for (const f of flyers) prepareFlight(f);
+
+// =====================================================================
+//  seek(t): every transform is recomputed from t alone
+// =====================================================================
+const headline = document.getElementById('headline');
+let TEXT = null;
+function applyState(t) {
+  t = clamp(t, 0, DURATION);
+
+  // pig
+  const ps = pigState(t);
+  pigRoot.position.copy(ps.pos); pigRoot.quaternion.copy(ps.quat); pigRoot.scale.copy(ps.scale);
+  pigRoot.updateMatrixWorld(true);
+  const crack = 3 * DEG * springStep(t - 4.56, 30, 0.45) + 3.5 * DEG * springStep(t - 4.79, 30, 0.45);
+  for (const p of petals) {
+    const open = (p.rest - 6.5 * DEG) * springStep(t - 5.0 - p.delay, 17, 0.45);
+    p.mesh.matrix.copy(hingeMatrix(p, crack + open));
+    p.mesh.matrixWorldNeedsUpdate = true;
+  }
+  for (const f of flyers) {
+    f.obj.matrix.copy(t < f.launch ? attachedMatrix(f, t) : flightMatrix(f, t));
+    f.obj.matrixWorldNeedsUpdate = true;
+  }
+  innerLight.intensity = 16 * smoothstep(4.5, 4.95, t) * (t < 5.0 ? 1 : Math.exp(-(t - 5.0) / 0.22));
+  const air = ps.y / HOP_H;
+  contact.scale.set(2.95 * ps.u * ps.sxz * (1 + 0.12 * air), 2.35 * ps.u * ps.sxz * (1 + 0.12 * air), 1);
+  contact.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, PIG.yaw));
+  contact.material.opacity = 0.34 * (1 - 0.45 * air);
+
+  // coins
+  for (const c of coins) {
+    const st = coinState(c, t);
+    if (!st || st.scale <= 1e-3) { c.mesh.visible = false; continue; }
+    c.mesh.visible = true; c.mesh.position.copy(st.p); c.mesh.quaternion.copy(st.q); c.mesh.scale.setScalar(st.scale);
+  }
+
+  // graph
+  const s = growth(t);
+  graphGroup.visible = s > 0;
+  const br = graphBreath(t);
+  graphGroup.scale.setScalar(br);
+  graphGroup.position.copy(GP[0]).multiplyScalar(1 - br);
+  for (let i = 0; i < segMeshes.length; i++) {
+    const last = i === segMeshes.length - 1;
+    const vl = last ? Math.max(0, s - cum[i]) : clamp(s - cum[i], 0, segLen[i]);
+    segMeshes[i].visible = vl > 1e-4;
+    segMeshes[i].scale.set(1, Math.max(vl, 1e-4), 1);
+  }
+  for (let i = 1; i < GP.length; i++) {
+    jointMeshes[i].visible = s >= cum[i];
+    const ns = nodeScale(i, t) * (i === GP.length - 1 ? NODE_R_LAST : NODE_R);
+    nodeMeshes[i].visible = ns > 1e-3;
+    nodeMeshes[i].scale.setScalar(Math.max(ns, 1e-4));
+  }
+  jointMeshes[0].visible = false; nodeMeshes[0].visible = false;
+  tipMesh.visible = s > 0;
+  pointAt(s, tipMesh.position);
+
+  // camera
+  const c = camAt(t);
+  setCam(camera, c);
+
+  // headline
+  if (TEXT) {
+    const e = easeOutCubic((t - 8.5) / 0.7);
+    headline.style.opacity = t < 8.5 ? '0' : String(e);
+    headline.style.transform = `translateY(${(TEXT.rise * (1 - e)).toFixed(2)}px)`;
+  }
+  return { t, s, cam: c };
+}
+function seek(t) {
+  const st = applyState(t);
+  renderer.render(scene, camera);
+  return st;
+}
+
+// =====================================================================
+//  Headline layout: measured, inside the safe area, below the pig
+// =====================================================================
+function pigBottomPx(cam) {
+  let y = 0;
+  const pts = [];
+  for (const [x, z] of LEGS) {
+    for (let a = 0; a < 8; a++) pts.push(new THREE.Vector3(x + LEG_R * Math.cos(a * Math.PI / 4), 0, z + LEG_R * Math.sin(a * Math.PI / 4)));
+  }
+  for (const p of pts) y = Math.max(y, toPx(p.applyQuaternion(yawQ), cam).y);
+  return y;
+}
+function layoutHeadline() {
+  let pigBottom = 0;
+  for (let t = 8.4; t <= 10.0001; t += 0.1) { setCam(scratchCam, camAt(t)); pigBottom = Math.max(pigBottom, pigBottomPx(scratchCam)); }
+  const rise = 30;
+  const zoneTop = pigBottom + 46, zoneBottom = SAFE.bottom - rise - 4;
+  const maxW = SAFE.right - SAFE.left - 24;
+  headline.style.transform = 'none';
+  let size = 150, rect, lines;
+  for (; size > 40; size -= 1) {
+    headline.style.fontSize = size + 'px';
+    lines = [...headline.querySelectorAll('.line')].map(l => l.getBoundingClientRect());
+    rect = headline.getBoundingClientRect();
+    if (Math.max(...lines.map(r => r.width)) <= maxW && rect.height <= zoneBottom - zoneTop) break;
+  }
+  const top = zoneTop + (zoneBottom - zoneTop - rect.height) / 2;
+  headline.style.top = top.toFixed(1) + 'px';
+  lines = [...headline.querySelectorAll('.line')].map(l => l.getBoundingClientRect());
+  const box = {
+    left: Math.min(...lines.map(r => r.left)), right: Math.max(...lines.map(r => r.right)),
+    top: Math.min(...lines.map(r => r.top)), bottom: Math.max(...lines.map(r => r.bottom)),
+  };
+  const inSafe = box.left >= SAFE.left && box.right <= SAFE.right && box.top >= SAFE.top && box.bottom + rise <= SAFE.bottom;
+  TEXT = { size, top, rise, box, pigBottom, zoneTop, zoneBottom, inSafe };
+  if (!inSafe) console.warn('headline outside safe area', JSON.stringify(TEXT));
+  return TEXT;
+}
+
+// =====================================================================
+//  Automated checks over all 600 output frames
+// =====================================================================
+// Exact screen extents of the pig: project its real (sub-sampled) vertices.
+function pigScreenBox(cam) {
+  const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }, v = new THREE.Vector3(), q = {};
+  pigRoot.traverse(o => {
+    if (!o.isMesh || !o.visible) return;
+    const pa = o.geometry.attributes.position;
+    for (let i = 0; i < pa.count; i += 3) {
+      toPx(v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld), cam, q);
+      box.x0 = Math.min(box.x0, q.x); box.x1 = Math.max(box.x1, q.x); box.y0 = Math.min(box.y0, q.y); box.y1 = Math.max(box.y1, q.y);
+    }
+  });
+  return box;
+}
+function runChecks() {
+  const issues = [];
+  const stats = { graphMinTop: Infinity, graphMaxRight: -Infinity, graphMinLeft: Infinity, piecesMin: { x: Infinity, y: Infinity }, piecesMax: { x: -Infinity, y: -Infinity } };
+  for (let k = 0; k < 600; k++) {
+    const t = k / 60;
+    const st = applyState(t);
+    // graph inside safe area
+    for (const b of graphBounds(st.s, true)) {
+      if (t < 5.0) break;
+      const e = sphereExtents({ p: b.p.clone().sub(GP[0]).multiplyScalar(graphBreath(t)).add(GP[0]), r: b.r }, camera);
+      stats.graphMinTop = Math.min(stats.graphMinTop, e.y0);
+      stats.graphMaxRight = Math.max(stats.graphMaxRight, e.x1);
+      stats.graphMinLeft = Math.min(stats.graphMinLeft, e.x0);
+      if (e.y0 < SAFE.top || e.x1 > SAFE.right || e.x0 < SAFE.left) issues.push(`t=${t.toFixed(3)} graph outside safe area (${e.x0.toFixed(0)},${e.y0.toFixed(0)})-(${e.x1.toFixed(0)},${e.y1.toFixed(0)})`);
+    }
+    // flying pieces stay in frame
+    for (const f of flyers) {
+      if (t < f.launch) continue;
+      const p = f.pivotLocal.clone().applyMatrix4(f.obj.matrix);
+      const e = sphereExtents({ p, r: 0.3 }, camera);
+      stats.piecesMin.x = Math.min(stats.piecesMin.x, e.x0); stats.piecesMin.y = Math.min(stats.piecesMin.y, e.y0);
+      stats.piecesMax.x = Math.max(stats.piecesMax.x, e.x1); stats.piecesMax.y = Math.max(stats.piecesMax.y, e.y1);
+      if (e.x0 < 0 || e.x1 > W || e.y0 < 0 || e.y1 > H) issues.push(`t=${t.toFixed(3)} ${f.kind} leaves frame`);
+    }
+    // pig fully in frame
+    const pb = pigScreenBox(camera);
+    stats.pigMin = { x: Math.min(stats.pigMin?.x ?? Infinity, pb.x0), y: Math.min(stats.pigMin?.y ?? Infinity, pb.y0) };
+    stats.pigMax = { x: Math.max(stats.pigMax?.x ?? -Infinity, pb.x1), y: Math.max(stats.pigMax?.y ?? -Infinity, pb.y1) };
+    if (pb.x0 < 0 || pb.x1 > W || pb.y0 < 0 || pb.y1 > H) issues.push(`t=${t.toFixed(3)} pig leaves frame (${pb.x0.toFixed(0)},${pb.y0.toFixed(0)})-(${pb.x1.toFixed(0)},${pb.y1.toFixed(0)})`);
+    // coins never shrink before they are inside the slot
+    for (const c of coins) {
+      const cs = coinState(c, t);
+      if (cs && cs.phase !== 'sink' && Math.abs(cs.scale - c.scale) > 1e-9) issues.push(`t=${t.toFixed(3)} coin ${c.i} shrinks before entry`);
+    }
+    // headline vs graph/pig overlap once visible
+    if (t >= 8.5 && TEXT) {
+      for (const b of graphBounds(st.s, true)) {
+        const e = sphereExtents(b, camera);
+        if (e.y1 > TEXT.box.top - 8 && e.x1 > TEXT.box.left && e.x0 < TEXT.box.right) issues.push(`t=${t.toFixed(3)} graph overlaps headline`);
+      }
+      if (pigBottomPx(camera) > TEXT.box.top - 8) issues.push(`t=${t.toFixed(3)} pig overlaps headline`);
+    }
+  }
+  applyState(0);
+  return { ok: issues.length === 0, issues: issues.slice(0, 40), issueCount: issues.length, stats, text: TEXT, camFinal: CAM_FINAL };
+}
+
+// =====================================================================
+//  Boot: wait for the local font before the first frame
+// =====================================================================
+(async () => {
+  await document.fonts.load('900 120px "Rubik Local"', 'הכסף שלך יכול לגדול');
+  await document.fonts.ready;
+  if (!document.fonts.check('900 120px "Rubik Local"', 'הכסף שלך יכול לגדול')) console.error('Rubik font NOT loaded');
+  layoutHeadline();
+  window.seek = seek;
+  window.applyState = applyState;
+  window.runChecks = runChecks;
+  window.__info = () => ({ camFinal: CAM_FINAL, text: TEXT, L, flyers: flyers.map(f => ({ kind: f.kind, launch: f.launch, t1: f.t1, restH: f.restH })),
+                          coins: coins.map(c => ({ i: c.i, tSpawn: c.tSpawn, tHit: c.tHit, S: c.S.toArray().map(v => +v.toFixed(2)) })) });
+  seek(params.has('t') ? parseFloat(params.get('t')) : 0);
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>
