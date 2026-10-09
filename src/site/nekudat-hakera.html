@@ -1116,7 +1116,8 @@ function readMaslakaXml(xmlText, fileName){
         if (l){
           const min = mTxt(l, "MIN");
           out.person = {
-            name:   [mTxt(l, "SHEM-PRATI"), mTxt(l, "SHEM-MISHPACHA")].filter(Boolean).join(" "),
+            /* שם משפחה ואחריו שם פרטי — כמו בחוות הדעת החתומות */
+            name:   [mTxt(l, "SHEM-MISHPACHA"), mTxt(l, "SHEM-PRATI")].filter(Boolean).join(" "),
             id:     mUnpad(mTxt(l, "MISPAR-ZIHUY-LAKOACH")),
             birth:  mYmd(mTxt(l, "TAARICH-LEYDA")),
             gender: min === "2" ? "female" : min === "1" ? "male" : ""
@@ -1298,7 +1299,7 @@ async function readScannedPdf(buffer, fileName, fallback){
   const r = res.result || {};
   if (!r.isMaslakaReport){ out.error = "זה לא דוח ריכוז מוצרים של המסלקה"; return out; }
   out.scanned = true;
-  out.person = { name: [r.firstName, r.lastName].filter(Boolean).join(" "), id: String(r.id || "").replace(/\D/g, ""), birth: "", gender: "" };
+  out.person = { name: [r.lastName, r.firstName].filter(Boolean).join(" "), id: String(r.id || "").replace(/\D/g, ""), birth: "", gender: "" };
   const num = v => (typeof v === "number" && isFinite(v)) ? v : null;
   for (const p of (r.products || [])){
     const section = norm(p.section), kind = norm(p.productType), body_ = norm(p.company) || section;
@@ -1419,7 +1420,7 @@ async function readMaslakaPdfText(buffer, fileName){
   const last  = head.match(/שם משפחה:\s*([^\s]+)/);
   const tz    = head.match(/מס מזהה לקוח:?\s*(\d{5,9})/);
   out.person = {
-    name: [first && first[1], last && last[1]].filter(Boolean).join(" "),
+    name: [last && last[1], first && first[1]].filter(Boolean).join(" "),   /* משפחה ואז פרטי */
     id: tz ? tz[1] : "",
     birth: "",      /* ה־PDF אינו כולל תאריך לידה */
     gender: ""      /* ולא מין */
@@ -1779,8 +1780,8 @@ function refreshMaslakaAdjustment(i){
   t.funds = t.rawFunds.map(f => adjustFundToBreak(f, brk));
   t.capital = (t.rawCapital || []).map(c => adjustFundToBreak(c, brk));
   t.blocked = !!t.mixed || [...t.funds, ...t.capital].some(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending");
-  p.funds = t.funds.map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba), opened: f.opened, body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
-  p.balances = t.funds.map(f => ({ name: f.plan, amount: Math.round(f.balance), adjustment: f }));
+  p.funds = t.funds.map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba * 100) / 100, opened: f.opened, body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
+  p.balances = t.funds.map(f => ({ name: f.plan, amount: Math.round(f.balance * 100) / 100, adjustment: f }));
   p.capital = t.capital.map(c => {
     let liquid = false;
     if (c.hishtalmut && c.opened && brk){
@@ -1788,7 +1789,7 @@ function refreshMaslakaAdjustment(i){
       if (six){ six.setUTCFullYear(six.getUTCFullYear() + 6); liquid = six <= brk; }
     }
     return { name: c.plan, kind: c.kind, taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
-             amount: Math.round(c.balance), liquid, opened: c.opened, adjustment: c };
+             amount: Math.round(c.balance * 100) / 100, liquid, opened: c.opened, adjustment: c };
   });
 }
 /* בדיקות סבירות על מה שנקרא — לא פוסלות, אבל מסמנות מה לבדוק מול הדוח.
@@ -1974,7 +1975,7 @@ function renderPeople(){
             </div>
             <div class="fund-row two">
               <label class="fld"><span>קצבה חודשית צפויה בגיל פרישה (₪)</span>
-                <input type="number" min="0" step="1" data-p="${i}" data-f="${j}" data-k="amount" value="${f.amount || ""}" placeholder="ללא המשך הפקדות"></label>
+                <input type="number" min="0" step="0.01" data-p="${i}" data-f="${j}" data-k="amount" value="${f.amount || ""}" placeholder="ללא המשך הפקדות"></label>
               <label class="fld"><span>מועד פתיחת הקופה</span>
                 <input type="date" data-p="${i}" data-f="${j}" data-k="opened" value="${escapeAttr(f.opened || "")}"></label>
             </div>
@@ -1997,7 +1998,7 @@ function renderPeople(){
             <label class="fld"><span>שם הנכס</span>
               <input data-p="${i}" data-b="${j}" data-k="name" value="${escapeAttr(b.name)}" placeholder="למשל: הראל פנסיה מקיפה"></label>
             <label class="fld"><span>יתרה צבורה למועד הקרע (₪)</span>
-              <input type="number" min="0" step="1" data-p="${i}" data-b="${j}" data-k="amount" value="${b.amount || ""}"></label>
+              <input type="number" min="0" step="0.01" data-p="${i}" data-b="${j}" data-k="amount" value="${b.amount || ""}"></label>
           </div>`).join("")}
         <button class="add-fund" data-addbal="${i}">הוספת יתרה</button>
       </div>
@@ -2010,7 +2011,7 @@ function renderPeople(){
               <label class="fld"><span>שם הנכס</span>
                 <input data-p="${i}" data-c="${j}" data-k="name" value="${escapeAttr(b.name)}" placeholder="למשל: כלל קרן השתלמות"></label>
               <label class="fld"><span>יתרה למועד הקרע (₪)</span>
-                <input type="number" min="0" step="1" data-p="${i}" data-c="${j}" data-k="amount" value="${b.amount || ""}"></label>
+                <input type="number" min="0" step="0.01" data-p="${i}" data-c="${j}" data-k="amount" value="${b.amount || ""}"></label>
             </div>
             <div class="fund-row two">
               <label class="fld"><span>מועד פתיחת הנכס</span>

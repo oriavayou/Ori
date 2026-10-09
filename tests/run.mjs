@@ -87,7 +87,7 @@ const PERSON_A = {
       opened: "20050301",
       asOf: "20250930",
       balance: 300000,
-      kitzba: 4200,
+      kitzba: 4200.4,
       gil: 67,
       deposits: monthlyDeposits(),
     },
@@ -293,11 +293,11 @@ test("XML reading: person, pension fund, study fund, deposits", async (page) => 
   const xml = mimshakXml(PERSON_A);
   const r = await page.evaluate((xml) => readMaslakaXml(xml, "a.xml"), xml);
   assert.equal(r.error, "");
-  assert.equal(r.person.name, "דנה כהן");
+  assert.equal(r.person.name, "כהן דנה", "surname first, as in the signed opinions");
   assert.equal(r.person.gender, "female");
   assert.equal(r.person.birth, "1980-05-10");
   assert.equal(r.funds.length, 1);
-  assert.equal(r.funds[0].kitzba, 4200);
+  assert.equal(r.funds[0].kitzba, 4200.4);
   assert.equal(r.funds[0].balance, 300000);
   assert.equal(r.funds[0].acct, "123456");
   assert.equal(r.funds[0].deposits.length, 9);
@@ -374,7 +374,7 @@ test("full wizard: XML upload, manual spouse, report bottom line equals headline
   assert.equal(intake.funds.length, 1);
   assert.equal(
     intake.funds[0].amount,
-    Math.round(Math.round(((4200 * 298000) / 300000) * 100) / 100),
+    Math.round(((4200.4 * 298000) / 300000) * 100) / 100,
     "kitzba adjusted by the deducted deposits",
   );
   assert.equal(intake.cap[0].taxable, true);

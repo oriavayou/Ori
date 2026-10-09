@@ -19,3 +19,4 @@
 - Break-date deduction counts deposits by salary month (XML `YYYYMM` and PDF `MM/YYYY` alike) and never deducts a deposit whose value date is after the balance date, since it is not in that balance.
 - Uploading reports of two different people to one side blocks the workflow; IDs are compared without leading zeros. Israeli ID check digits are validated before the report.
 - `tests/run.mjs` drives the real page in headless Chromium (`NODE_PATH="$(npm root -g)" node tests/run.mjs`); run it after any change to the calculator.
+- Amounts read from clearing-house reports keep their agorot (a monthly pension of 3,605.40 is not rounded to 3,605 — that moved a real case's discounted value by ₪40). Names read from reports are stored surname first, as in the signed opinions, because the opinion takes the personal name from the last word.
