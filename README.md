@@ -27,3 +27,13 @@ npm run dev
 - TypeScript
 - React
 - Tailwind CSS
+
+## Tests
+
+The calculator lives in `src/site/nekudat-hakera.html`. Its tests load that page in headless Chromium and call its functions, then run the whole wizard with a synthetic clearing-house XML file:
+
+```sh
+NODE_PATH="$(npm root -g)" node tests/run.mjs
+```
+
+They need Playwright installed globally (`npm i -g playwright`). Set `VENDOR_DIR` to a folder whose `node_modules` holds `pdfjs-dist`, `jszip`, `jspdf` and `html2canvas` to serve those CDN scripts locally.

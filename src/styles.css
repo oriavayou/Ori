@@ -32,8 +32,8 @@
   --color-ring: var(--ring);
   --color-gold: var(--gold);
   --color-gold-foreground: var(--gold-foreground);
-  --font-display: "Sora", "Rubik", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Manrope", "Rubik", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Rubik", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {

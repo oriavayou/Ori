@@ -30,7 +30,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
 <style>
 :root{
   /* לוח פשוט: לבן, שחור, אפור. בלי צבעי מותג ובלי הדרגות. */
@@ -248,12 +248,12 @@ body[data-wizard-step="1"] #intake,body[data-wizard-step="2"] #intake,body[data-
 @media(max-width:640px){.wizard-progress{gap:3px}.wizard-progress li{font-size:.62rem}.wizard-mode{padding:16px}.wizard-nav{align-items:stretch}.wizard-nav .btn{padding-inline:12px}.wizard-nav-status{font-size:.72rem}}
 .wizard-guide{position:relative;overflow:hidden;border:1px solid color-mix(in srgb,var(--brass) 38%,transparent);border-radius:14px;background:linear-gradient(180deg,color-mix(in srgb,var(--brass-wash) 55%,var(--surface)),var(--brass-wash));padding:20px 24px 20px;margin:0 0 20px;box-shadow:0 8px 22px -12px color-mix(in srgb,var(--petrol) 30%,transparent)}
 .wizard-guide::before{content:"";position:absolute;top:0;right:0;left:0;height:3px;background:linear-gradient(270deg,var(--petrol),var(--brass) 50%,var(--petrol))}
-.wizard-guide .g-badge{display:inline-flex;align-items:center;font-family:'Manrope',sans-serif;font-size:.72rem;font-weight:700;letter-spacing:.05em;color:var(--brass-soft);background:color-mix(in srgb,var(--brass) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--brass) 45%,transparent);padding:4px 12px;border-radius:999px}
+.wizard-guide .g-badge{display:inline-flex;align-items:center;font-family:'Rubik',sans-serif;font-size:.72rem;font-weight:700;letter-spacing:.05em;color:var(--brass-soft);background:color-mix(in srgb,var(--brass) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--brass) 45%,transparent);padding:4px 12px;border-radius:999px}
 .wizard-guide h3{margin:10px 0 6px;font-size:1.12rem;color:var(--petrol);font-weight:700;line-height:1.35}
 .wizard-guide .g-lead{margin:0 0 12px;color:var(--muted);font-size:.9rem;line-height:1.6}
 .wizard-guide ol{margin:0;padding-inline-start:0;list-style:none;counter-reset:gstep;display:grid;gap:10px;font-size:.9rem;line-height:1.6}
 .wizard-guide li{position:relative;padding-inline-start:36px;color:var(--ink)}
-.wizard-guide li::before{counter-increment:gstep;content:counter(gstep);position:absolute;inset-inline-start:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--petrol);color:#fff;font-family:'Sora',sans-serif;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px -2px color-mix(in srgb,var(--petrol) 60%,transparent)}
+.wizard-guide li::before{counter-increment:gstep;content:counter(gstep);position:absolute;inset-inline-start:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--petrol);color:#fff;font-family:'Rubik',sans-serif;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px -2px color-mix(in srgb,var(--petrol) 60%,transparent)}
 .wizard-guide .g-tip{margin:16px 0 0;font-size:.84rem;line-height:1.6;color:var(--ink);background:color-mix(in srgb,var(--petrol) 7%,var(--surface));border:1px solid color-mix(in srgb,var(--petrol) 20%,transparent);border-inline-start:4px solid var(--brass);border-radius:10px;padding:12px 16px}
 .wizard-guide a{color:var(--petrol);font-weight:700}
 #calc .wizard-guide{grid-column:2}
@@ -471,7 +471,7 @@ input.needs, select.needs{border-color:var(--brass); background:var(--brass-wash
 /* ---------- method / faq ---------- */
 .method-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:26px 34px; counter-reset:method}
 .method-item{position:relative; padding-inline-start:44px; counter-increment:method}
-.method-item::before{content:counter(method, decimal-leading-zero); position:absolute; inset-inline-start:0; top:2px; font-family:'Sora',sans-serif; font-size:1.05rem; font-weight:700; color:var(--brass); border-bottom:2px solid var(--brass); padding-bottom:2px; line-height:1.2}
+.method-item::before{content:counter(method, decimal-leading-zero); position:absolute; inset-inline-start:0; top:2px; font-family:'Rubik',sans-serif; font-size:1.05rem; font-weight:700; color:var(--brass); border-bottom:2px solid var(--brass); padding-bottom:2px; line-height:1.2}
 .method-item h4{font-family:'Rubik',sans-serif; font-size:.95rem; font-weight:600; margin-bottom:5px; color:var(--petrol)}
 .method-item p{font-size:.85rem; color:var(--muted); line-height:1.65}
 details{border-bottom:1px solid var(--line); padding:16px 0}
@@ -558,8 +558,8 @@ footer{border-top:1px solid var(--line); padding:34px 0; background:var(--surfac
   --shadow-lift:0 18px 45px rgba(6,78,59,.13);
   --r:6px; --r-lg:8px;
 }
-body{font-family:'Manrope','Rubik',sans-serif;background:var(--ground);letter-spacing:0}
-h1,h2,h3,h4,.logo,.btn,input,select,textarea,.seg button{font-family:'Sora','Manrope',sans-serif;letter-spacing:0}
+body{font-family:'Rubik',-apple-system,'Segoe UI',Arial,sans-serif;background:var(--ground);letter-spacing:0}
+h1,h2,h3,h4,.logo,.btn,input,select,textarea,.seg button{font-family:'Rubik',Arial,sans-serif;letter-spacing:0}
 .masthead{background:rgba(255,253,248,.94);border-color:var(--line-soft);backdrop-filter:blur(12px)}
 .masthead-in{height:64px}.logo{font-size:1.2rem;color:var(--ink);display:inline-flex;align-items:center;gap:10px}
 .logo img{height:34px;width:auto;display:block}
@@ -664,7 +664,7 @@ input:hover,select:hover,textarea:hover{border-color:#9bad9f}input:focus,select:
     <div class="shared">
       <div class="field">
         <label for="marriage">מועד תחילת השותפות</label>
-        <input type="date" id="marriage" value="2022-02-02">
+        <input type="date" id="marriage" value="" min="1950-01-01" max="2100-12-31">
         <span class="hint">תאריך הנישואין. קובע כמה מכל קופה משותף.</span>
       </div>
     </div>
@@ -681,6 +681,26 @@ input:hover,select:hover,textarea:hover{border-color:#9bad9f}input:focus,select:
           <label for="tax">שיעור מס</label>
           <input type="number" id="tax" value="35" step="1" min="0" max="60">
           <span class="hint">באחוזים. משמש רק לגישה הלא־מהוונת.</span>
+        </div>
+        <div class="field">
+          <label for="retM">גיל פרישה — גבר</label>
+          <input type="number" id="retM" value="67" step="0.1" min="50" max="75">
+          <span class="hint">ברירת המחדל: 67, כקבוע בחוק גיל פרישה.</span>
+        </div>
+        <div class="field">
+          <label for="retF">גיל פרישה — אישה</label>
+          <input type="number" id="retF" value="65" step="0.1" min="50" max="75">
+          <span class="hint">ברירת המחדל: 65. כשגיל הפרישה בדוח הקופה שונה, תופיע הערה.</span>
+        </div>
+        <div class="field">
+          <label for="lifeM">תוחלת חיים — גבר</label>
+          <input type="number" id="lifeM" value="81.7" step="0.1" min="60" max="100">
+          <span class="hint">בשנים, לפי הלשכה המרכזית לסטטיסטיקה.</span>
+        </div>
+        <div class="field">
+          <label for="lifeF">תוחלת חיים — אישה</label>
+          <input type="number" id="lifeF" value="85.7" step="0.1" min="60" max="100">
+          <span class="hint">בשנים, לפי הלשכה המרכזית לסטטיסטיקה.</span>
         </div>
         <div class="field">
           <label for="court">שם הערכאה</label>
@@ -777,16 +797,30 @@ const fmtD = d => d ? String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTC
 const utcDate = (y, m, d) => new Date(Date.UTC(y, m, d));
 
 /* ---------------- model ---------------- */
-const retireAge = g => g === "male" ? 67 : 65;
-const lifeAge   = g => g === "male" ? 81.7 : 85.7;
+/* הנחות התחשיב. ברירות המחדל הן אלה של חוות הדעת החתומות (פרישה 67/65,
+   תוחלת חיים 81.7/85.7 לפי הלמ"ס), וניתנות לשינוי בהגדרות התחשיב. */
+const ASSUME_DEFAULTS = { retM: 67, retF: 65, lifeM: 81.7, lifeF: 85.7 };
+const ASSUME_LIMITS = { ret: [50, 75], life: [60, 100] };
+function assumption(id){
+  const el = typeof document !== "undefined" ? document.getElementById(id) : null;
+  const v = el ? parseFloat(el.value) : NaN;
+  const [lo, hi] = ASSUME_LIMITS[id.slice(0, -1)];
+  return isFinite(v) && v >= lo && v <= hi ? v : ASSUME_DEFAULTS[id];
+}
+const retireAge = g => assumption(g === "male" ? "retM" : "retF");
+const lifeAge   = g => assumption(g === "male" ? "lifeM" : "lifeF");
 
-function retireDate(birth, g){
-  return utcDate(birth.getUTCFullYear() + retireAge(g), birth.getUTCMonth(), birth.getUTCDate());
+/* גיל עשרוני → שנים, חודשים וימים. 0.7 שנה = 8 חודשים ו־12 ימים,
+   כמו בחוות הדעת החתומות. */
+function addAge(birth, age){
+  const whole = Math.floor(age + 1e-9);
+  const monthsF = (age - whole) * 12;
+  const months = Math.floor(monthsF + 1e-9);
+  const days = Math.round((monthsF - months) * 30.4375);
+  return utcDate(birth.getUTCFullYear() + whole, birth.getUTCMonth() + months, birth.getUTCDate() + days);
 }
-function mortalityDate(birth, g){
-  const whole = g === "male" ? 81 : 85;
-  return utcDate(birth.getUTCFullYear() + whole, birth.getUTCMonth() + 8, birth.getUTCDate() + 12);
-}
+function retireDate(birth, g){ return addAge(birth, retireAge(g)); }
+function mortalityDate(birth, g){ return addAge(birth, lifeAge(g)); }
 function monthsBetween(from, to){
   return Math.max(0, Math.round((to - from) / DAY / 30.4375));
 }
@@ -805,13 +839,15 @@ function discountBack(v, i, years){ return v / Math.pow(1 + i, years); }
 /* Transfer share, per fund:
    (shared years ÷ the fund's own accrual years) ÷ 2, capped at 50%.
    Years use a 365-day divisor, matching the expert opinions these figures come from.
-   A fund opened after the wedding is wholly marital, so the ratio caps out at 1. */
+   A fund opened after the wedding is wholly marital, so the ratio caps out at 1.
+   A fund opened on or after the break accrued nothing in the partnership: 0%. */
 function transferShare(marriage, breakDate, opened){
   if (!marriage || isNaN(marriage) || !breakDate || isNaN(breakDate)) return { share: 0.5, accrual: null, raw: null };
   if (!opened || isNaN(opened))                                        return { share: 0.5, accrual: null, raw: null };
   const shared  = (breakDate - marriage) / DAY / 365;
   const accrual = (breakDate - opened)   / DAY / 365;
-  if (accrual <= 0) return { share: 0.5, accrual: accrual, raw: null };
+  if (accrual <= 0) return { share: 0, accrual: 0, raw: 0, shared, joint: 0, afterBreak: true };
+  if (shared <= 0)  return { share: 0, accrual, raw: 0, shared: 0, joint: 0 };
   const raw = shared / accrual;
   return { share: Math.min(1, raw) / 2, accrual, raw, shared, joint: Math.min(shared, accrual) };
 }
@@ -822,10 +858,13 @@ function computePerson(p, rate, breakDate, otherMortality, taxRate, marriage){
   if (!birth || isNaN(birth) || !breakDate || isNaN(breakDate)) return out;
   const ret   = retireDate(birth, p.gender);
   const death = mortalityDate(birth, p.gender);
-  const n     = monthsBetween(ret, death);
+  /* מי שכבר פרש לפני מועד הקרע — נספרים רק התשלומים שממועד הקרע ואילך;
+     תשלומים שכבר שולמו אינם חלק מהשווי שנותר לחלוקה. */
+  const start = ret > breakDate ? ret : breakDate;
+  const n     = monthsBetween(start, death);
   const yrs   = yearsBetween(breakDate, ret);
   const nEarly = otherMortality
-    ? monthsBetween(ret, new Date(Math.min(death.getTime(), otherMortality.getTime())))
+    ? monthsBetween(start, new Date(Math.min(death.getTime(), otherMortality.getTime())))
     : n;
 
   let monthly = 0, atRetire = 0, atBreak = 0, atBreakEarly = 0;
@@ -858,7 +897,15 @@ function computePerson(p, rate, breakDate, otherMortality, taxRate, marriage){
      study fund whose redemption date has arrived goes in untaxed. Any other
      capital asset is not marked with tax at all. */
   const CG_RATE = 0.25;
-  const isTaxableCapital = name => /השתלמות|להשקעה/.test(String(name || ""));
+  const isTaxableCapital = b => b.taxable === true || /השתלמות|להשקעה/.test(String(b.name || "") + " " + String(b.kind || ""));
+  /* המס חל על הרווח. כשהרווח החייב ידוע (הוזן) — 25% ממנו; כשאינו ידוע,
+     כמו בחוות הדעת החתומות — 25% מהיתרה כולה, וכך גם נכתב בדוח. */
+  const gainOf = b => { const g = parseFloat(b.gain); return isFinite(g) && g >= 0 ? g : null; };
+  const taxOf = (b, value) => {
+    if (b.liquid || b.atRetire || !isTaxableCapital(b)) return 0;
+    const g = gainOf(b);
+    return CG_RATE * (g == null ? value : Math.min(g, value));
+  };
   /* An inactive pension paying a one-off sum at retirement is a capital asset
      too, discounted as a sum (not an annuity) from retirement back to the break:
      amount ÷ (1+i)^years. It is shown before tax, like the signed opinions. */
@@ -867,15 +914,16 @@ function computePerson(p, rate, breakDate, otherMortality, taxRate, marriage){
      the pension funds (shared years ÷ the asset's own accrual years). */
   const capItems = (p.capital || []).map(b => {
     const value = capVal(b);
-    const tax = (b.liquid || b.atRetire || !isTaxableCapital(b.name)) ? 0 : value * CG_RATE;
+    const tax = taxOf(b, value);
     const sh = transferShare(marriage, breakDate, parseDate(b.opened));
-    return Object.assign({}, b, { value, tax, sh, marital: (value - tax) * sh.share * 2, due: (value - tax) * sh.share });
+    return Object.assign({}, b, { value, tax, sh, taxable: tax > 0, taxOnGain: tax > 0 && gainOf(b) != null,
+      marital: (value - tax) * sh.share * 2, due: (value - tax) * sh.share });
   });
   const capital = capItems.reduce((t, b) => t + b.value, 0);
-  const capGainsTax = capItems.reduce((t, b) =>
-    t + (b.liquid || b.atRetire || !isTaxableCapital(b.name) ? 0 : b.value * CG_RATE), 0);
+  const capGainsTax = capItems.reduce((t, b) => t + b.tax, 0);
   return Object.assign(out, {
     valid: true, retire: ret, death, months: n, monthsEarly: nEarly, years: yrs,
+    retiredAtBreak: ret <= breakDate,
     monthly, atRetire, atBreak, atBreakEarly, transfer, transferEarly,
     balances, capital, capGainsTax, capItems,
     capitalNet: capital - capGainsTax,
@@ -1540,13 +1588,18 @@ async function readMaslakaPdfText(buffer, fileName){
       return out;
     }
   }
+  /* לא נמצא סכום ביקורת בעמוד הראשון — אי אפשר לאמת את הקריאה הישירה.
+     ההערה גורמת לקריאה הממוחשבת לנסות לאמת מול הדוח. */
+  if (out.funds.length && stated == null){
+    out.notes = [`לא נמצא בעמוד הראשון סכום ביקורת לקרנות הפנסיה, ולכן לא ניתן היה לאמת את הסכומים שנקראו. כדאי לבדוק ידנית מול הדוח.`];
+  }
   /* ביקורת שנייה, רכה: סך כל מה שנקרא מול סך כל הקטגוריות בעמוד
      הראשון. דוח ה־PDF מציג לעיתים שתי תוכניות על שורה אחת, ואז
      חסר הפרש קטן. לא פוסלים — מציינים, כדי שאיש לא יסתמך בטעות. */
   if (statedAll != null && (out.funds.length || out.capital.length)){
     const all = [...out.funds, ...out.capital, ...out.skipped].reduce((t, f) => t + (f.balance || 0), 0);
     if (Math.abs(all - statedAll) > 2){
-      out.notes = [`סך הצבירות שנקראו מה־PDF הוא ${ils.format(all)}, ובדוח מופיע ${ils.format(statedAll)} — הפרש של ${ils.format(Math.abs(statedAll - all))}. כדאי לבדוק ידנית.`];
+      (out.notes || (out.notes = [])).push(`סך הצבירות שנקראו מה־PDF הוא ${ils.format(all)}, ובדוח מופיע ${ils.format(statedAll)} — הפרש של ${ils.format(Math.abs(statedAll - all))}. כדאי לבדוק ידנית.`);
     }
   }
   seqTag(out.funds, "fund"); seqTag(out.capital, "capital"); seqTag(out.skipped, "skip");
@@ -1560,7 +1613,9 @@ function mergeMaslaka(results){
   for (const r of results){
     if (r.error){ m.errors.push({ file: r.file, msg: r.error }); continue; }
     if (r.person && r.person.id){
-      if (!m.people.some(p => p.id === r.person.id)) m.people.push(r.person);
+      /* ת.ז. מגיעה מה־XML בלי אפסים מובילים ומה־PDF לעיתים איתם */
+      const idKey = String(r.person.id).replace(/\D/g, "").replace(/^0+/, "");
+      if (!m.people.some(p => String(p.id).replace(/\D/g, "").replace(/^0+/, "") === idKey)) m.people.push(r.person);
       /* ה־PDF נושא שם ות.ז. אך לא תאריך לידה ומין; ה־XML נושא את
          כולם. מרכיבים אדם אחד מכל מה שיש, ולא לפי סדר ההעלאה. */
       if (!m.person) m.person = Object.assign({}, r.person);
@@ -1586,6 +1641,12 @@ function mergeMaslaka(results){
     }
   }
   m.funds = [...by.values()];
+  /* קבצים של שני אנשים שונים אצל אותו צד — הקופות של שניהם היו
+     מתערבבות לתחשיב אחד. עוצרים ומבקשים להפריד. */
+  if (m.people.length > 1){
+    m.mixed = true;
+    m.errors.push({ file: "", msg: `הקבצים שהועלו שייכים ליותר מאדם אחד (${m.people.map(p => [p.name, p.id].filter(Boolean).join(" ")).join(" · ")}). יש להעלות לכל צד רק את הדוחות שלו.` });
+  }
 
   const capBy = new Map();
   for (const c of m.capital){
@@ -1659,6 +1720,19 @@ function monthLabel(from, to){
   const months = (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + to.getUTCMonth() - from.getUTCMonth();
   return months === 0 ? "אותו חודש" : `${months} ${months === 1 ? "חודש" : "חודשים"}`;
 }
+/* חודש משכורת בכל הצורות שמופיעות בדוחות: 06/2025 (PDF), 202506 או
+   20250601 (XML), 062025, 2025-06. מחזיר את תחילת החודש, או null. */
+function parseSalaryMonth(v){
+  const s = String(v || "").trim();
+  const ok = (y, m) => y >= 1950 && y <= 2100 && m >= 1 && m <= 12 ? new Date(Date.UTC(y, m - 1, 1)) : null;
+  let m;
+  if ((m = s.match(/^(\d{4})(\d{2})(\d{2})?$/)) && ok(+m[1], +m[2])) return ok(+m[1], +m[2]);
+  if ((m = s.match(/^(\d{2})(\d{4})$/)))          return ok(+m[2], +m[1]);
+  if ((m = s.match(/^(\d{4})[\/.\-](\d{1,2})(?:[\/.\-]\d{1,2})?$/))) return ok(+m[1], +m[2]);
+  if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/))) return ok(+m[3], +m[2]);
+  if ((m = s.match(/(\d{1,2})[\/.\-](\d{2,4})(?!\d)/))){ let y = +m[2]; if (y < 100) y += 2000; return ok(y, +m[1]); }
+  return null;
+}
 function adjustFundToBreak(f, breakDate){
   const asOf = parseDate(f.asOf);
   const base = Object.assign({}, f, { originalBalance: f.balance, originalKitzba: f.kitzba, deducted: 0, adjustmentStatus: "ok", adjustmentMessage: "" });
@@ -1680,19 +1754,15 @@ function adjustFundToBreak(f, breakDate){
   }
   // הפקדה נחשבת "אחרי הקרע" לפי חודש השכר, לא לפי תאריך הערך:
   // הפקדה על משכורת חודש הקרע עצמו שייכת לתקופה המשותפת גם אם שולמה אחריו.
-  const salaryMonthStart = d => {
-    const s = String(d.salaryMonth || "").trim();
-    const m = s.match(/(\d{1,2})[\/.\-](\d{2,4})/);
-    if (!m) return null;
-    let y = parseInt(m[2], 10); if (y < 100) y += 2000;
-    return new Date(Date.UTC(y, parseInt(m[1], 10) - 1, 1));
-  };
+  const salaryMonthStart = d => parseSalaryMonth(d.salaryMonth);
   const breakMonthStart = new Date(Date.UTC(breakDate.getUTCFullYear(), breakDate.getUTCMonth(), 1));
   const after = dated.filter(d => {
+    const dt = parseDate(d.valueDate);
+    /* הפקדה שנכנסה אחרי תאריך נכונות היתרה אינה כלולה ביתרה — אין מה לקזז */
+    if (dt > asOf) return false;
     const sm = salaryMonthStart(d);
     if (sm) return sm > breakMonthStart;
-    const dt = parseDate(d.valueDate);
-    return dt > breakDate && dt <= asOf;
+    return dt > breakDate;
   });
   const deducted = Math.round(after.reduce((sum, d) => sum + d.amount, 0) * 100) / 100;
   if (deducted > f.balance){ base.adjustmentStatus = "blocked"; base.adjustmentMessage = "סכום ההפקדות המאוחרות גדול מהיתרה המדווחת; נדרש דוח תקופתי מחברת הביטוח"; return base; }
@@ -1708,8 +1778,8 @@ function refreshMaslakaAdjustment(i){
   const brk = parseDate($("#breakDate").value);
   t.funds = t.rawFunds.map(f => adjustFundToBreak(f, brk));
   t.capital = (t.rawCapital || []).map(c => adjustFundToBreak(c, brk));
-  t.blocked = [...t.funds, ...t.capital].some(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending");
-  p.funds = t.funds.map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba), opened: f.opened, body: f.body, nikuim: f.nikuim || "", adjustment: f }));
+  t.blocked = !!t.mixed || [...t.funds, ...t.capital].some(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending");
+  p.funds = t.funds.map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba), opened: f.opened, body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
   p.balances = t.funds.map(f => ({ name: f.plan, amount: Math.round(f.balance), adjustment: f }));
   p.capital = t.capital.map(c => {
     let liquid = false;
@@ -1717,8 +1787,25 @@ function refreshMaslakaAdjustment(i){
       const six = parseDate(c.opened);
       if (six){ six.setUTCFullYear(six.getUTCFullYear() + 6); liquid = six <= brk; }
     }
-    return { name: c.plan, amount: Math.round(c.balance), liquid, opened: c.opened, adjustment: c };
+    return { name: c.plan, kind: c.kind, taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
+             amount: Math.round(c.balance), liquid, opened: c.opened, adjustment: c };
   });
+}
+/* בדיקות סבירות על מה שנקרא — לא פוסלות, אבל מסמנות מה לבדוק מול הדוח.
+   קצבה ללא המשך הפקדות היא בדרך כלל אחוזים בודדים מהצבירה; קצבה של יותר
+   מעשירית הצבירה מעידה כמעט תמיד על קריאה של עמודה או שורה שגויה. */
+function plausibilityNotes(m){
+  const notes = [];
+  for (const f of m.funds || []){
+    const label = [f.plan, f.acct ? "חשבון " + f.acct : ""].filter(Boolean).join(" · ");
+    if (f.balance > 0 && !(f.kitzba > 0))
+      notes.push(`${label}: לא נקראה קצבה חודשית לגיל פרישה. יש להזין אותה ידנית מהדוח — בלעדיה הקופה אינה מהוונת.`);
+    else if (f.balance > 0 && f.kitzba > f.balance * 0.1)
+      notes.push(`${label}: הקצבה שנקראה (${ils.format(f.kitzba)}) גבוהה באופן חריג ביחס לצבירה (${ils.format(f.balance)}). כדאי לבדוק מול הדוח.`);
+    if (f.opened && f.asOf && parseDate(f.opened) && parseDate(f.asOf) && parseDate(f.opened) > parseDate(f.asOf))
+      notes.push(`${label}: תאריך הפתיחה מאוחר מתאריך נכונות הנתונים. כדאי לבדוק מול הדוח.`);
+  }
+  return notes;
 }
 function applyMaslaka(i, m){
   const p = state.people[i];
@@ -1734,7 +1821,7 @@ function applyMaslaka(i, m){
     got.gender = !!m.person.gender;
   }
   p.intake = { rawFunds: m.funds, rawCapital: m.capital, funds: [], capital: [], skipped: m.skipped,
-               errors: m.errors, notes: m.notes, fileCount: m.fileCount, got };
+               errors: m.errors, notes: [...m.notes, ...plausibilityNotes(m)], fileCount: m.fileCount, got, mixed: !!m.mixed };
   refreshMaslakaAdjustment(i);
 }
 
@@ -1767,7 +1854,7 @@ function renderIntake(){
       <div class="i-row">
         <span class="i-name">${escapeAttr(c.plan)}
           <span class="i-sub">${escapeAttr(c.kind)}${c.acct ? " · חשבון " + escapeAttr(c.acct) : ""}${c.active ? "" : " · לא פעילה"}</span></span>
-        <span class="i-val">${ils.format(c.balance)}<span class="i-sub" style="color:var(--muted);text-align:end">${!/השתלמות|להשקעה/.test(String(c.plan || "")) ? "ללא מס" : liq ? "ניתנת לפדיון · ללא מס" : "25% מס"}</span><span class="i-sub" style="text-align:end">נכון ל־${c.asOf ? dateFmt(parseDate(c.asOf)) : "תאריך חסר"} · ${escapeAttr(c.adjustmentMessage)}</span></span>
+        <span class="i-val">${ils.format(c.balance)}<span class="i-sub" style="color:var(--muted);text-align:end">${!/השתלמות|להשקעה/.test(String(c.plan || "") + " " + String(c.kind || "")) ? "ללא מס" : liq ? "ניתנת לפדיון · ללא מס" : "25% מס"}</span><span class="i-sub" style="text-align:end">נכון ל־${c.asOf ? dateFmt(parseDate(c.asOf)) : "תאריך חסר"} · ${escapeAttr(c.adjustmentMessage)}</span></span>
       </div>`;
     }).join("");
 
@@ -1797,7 +1884,7 @@ function renderIntake(){
         <h4>${escapeAttr(p.name || "ללא שם")}</h4>
         <p class="d-hint">${t.fileCount} קבצים נקראו · ${t.funds.length} קרנות פנסיה${(t.capital || []).length ? ` · ${t.capital.length} נכסים הוניים` : ""} נכנסו לתחשיב${t.skipped.length ? ` · ${t.skipped.length} דורשים טיפול` : ""}</p>
         ${(t.notes || []).map(n => `<div class="need-more">${escapeAttr(n)}</div>`).join("")}
-        ${t.blocked ? `<div class="contact-note"><strong>לא ניתן להמשיך עם הדוח הזה.</strong> ${escapeAttr(([...t.funds, ...(t.capital || [])].find(f => f.adjustmentStatus !== "ok") || {}).adjustmentMessage || "נדרשת בדיקה של נתוני ההפקדות")}</div>` : ""}
+        ${t.blocked && !t.mixed ? `<div class="contact-note"><strong>לא ניתן להמשיך עם הדוח הזה.</strong> ${escapeAttr(([...t.funds, ...(t.capital || [])].find(f => f.adjustmentStatus !== "ok") || {}).adjustmentMessage || "נדרשת בדיקה של נתוני ההפקדות")}</div>` : ""}
         ${t.funds.length && (!p.birth || !p.gender) ? `
         <div class="need-more">דוח ה־PDF אינו כולל תאריך לידה ומין. השלימו אותם בטופס שלמטה —
           בלעדיהם אין גיל פרישה ואין תוחלת חיים, ולכן אין היוון.</div>` : ""}
@@ -1843,7 +1930,7 @@ function renderPeople(){
       <details${wizardStep === i + 1 || !p.intake ? " open" : ""}>
       <summary class="person-head">
         <span class="person-tag">${p.tag}</span>
-        <h3>${p.name || "ללא שם"}</h3>
+        <h3>${escapeAttr(p.name || "ללא שם")}</h3>
         <span class="edit-cue">${p.intake ? "עריכה ידנית" : ""}</span>
       </summary>
       <div class="fields">
@@ -1862,7 +1949,7 @@ function renderPeople(){
         </div>
         <div class="field">
           <label for="birth${i}">תאריך לידה</label>
-          <input type="date" id="birth${i}" data-p="${i}" data-k="birth" value="${p.birth}"${p.birth ? "" : ' class="needs"'}>
+          <input type="date" id="birth${i}" data-p="${i}" data-k="birth" value="${escapeAttr(p.birth)}"${p.birth ? "" : ' class="needs"'}>
         </div>
         <div class="field full">
           <label for="tz${i}">מספר תעודת זהות</label>
@@ -1889,7 +1976,7 @@ function renderPeople(){
               <label class="fld"><span>קצבה חודשית צפויה בגיל פרישה (₪)</span>
                 <input type="number" min="0" step="1" data-p="${i}" data-f="${j}" data-k="amount" value="${f.amount || ""}" placeholder="ללא המשך הפקדות"></label>
               <label class="fld"><span>מועד פתיחת הקופה</span>
-                <input type="date" data-p="${i}" data-f="${j}" data-k="opened" value="${f.opened || ""}"></label>
+                <input type="date" data-p="${i}" data-f="${j}" data-k="opened" value="${escapeAttr(f.opened || "")}"></label>
             </div>
             <div class="fund-row">
               <label class="fld"><span>גוף משלם (לכבוד)</span>
@@ -1927,7 +2014,9 @@ function renderPeople(){
             </div>
             <div class="fund-row two">
               <label class="fld"><span>מועד פתיחת הנכס</span>
-                <input type="date" data-p="${i}" data-c="${j}" data-k="opened" value="${b.opened || ""}"></label>
+                <input type="date" data-p="${i}" data-c="${j}" data-k="opened" value="${escapeAttr(b.opened || "")}"></label>
+              <label class="fld"><span>רווח חייב במס (₪) — אם ידוע</span>
+                <input type="number" min="0" step="1" data-p="${i}" data-c="${j}" data-k="gain" value="${escapeAttr(b.gain == null ? "" : b.gain)}" placeholder="ריק = מס על כל היתרה"></label>
             </div>
             <label class="liq"><input type="checkbox" data-p="${i}" data-c="${j}" data-k="liquid"${b.liquid ? " checked" : ""}>
               קרן השתלמות שניתן כבר לפדות — פטורה ממס</label>
@@ -1935,7 +2024,7 @@ function renderPeople(){
               פנסיה לא פעילה — סכום חד־פעמי שיתקבל בגיל פרישה (יהוון למועד הקרע)</label>
           </div>`).join("")}
         <button class="add-fund" data-addcap="${i}">הוספת נכס הוני</button>
-        <div class="fund-meta">מס 25% מסומן רק על נכס שכתוב בו במפורש „קרן השתלמות” או „קופת גמל להשקעה”. נכס אחר נכנס ללא מס.</div>
+        <div class="fund-meta">מס 25% מחושב רק על קרן השתלמות שטרם הגיעה למועד הנזילות או על קופת גמל להשקעה — מהרווח החייב אם הוזן, ואחרת מהיתרה כולה. נכס אחר נכנס ללא מס.</div>
       </div>
       </details>
     </div>`).join("");
@@ -1952,19 +2041,34 @@ function markWizardInvalid(selector){
   el.classList.add("wizard-invalid");
   if (typeof el.focus === "function") el.focus({ preventScroll: true });
 }
+/* ספרת ביקורת של תעודת זהות ישראלית (אלגוריתם לוהן, עם ריפוד ל־9 ספרות) */
+function validIsraeliId(id){
+  const s = String(id || "").replace(/\D/g, "");
+  if (s.length < 5 || s.length > 9 || /^0+$/.test(s)) return false;
+  const p = s.padStart(9, "0");
+  let sum = 0;
+  for (let k = 0; k < 9; k++){ let d = +p[k] * (k % 2 ? 2 : 1); if (d > 9) d -= 9; sum += d; }
+  return sum % 10 === 0;
+}
 function validPersonStep(i){
   const p = state.people[i];
+  const birth = p.birth && parseDate(p.birth);
+  const brk = parseDate($("#breakDate").value);
+  const digits = String(p.id || "").replace(/\D/g, "");
   const required = [
     [p.name && p.name.trim(), `#name${i}`, "יש למלא שם מלא"],
     [p.gender, `#gender${i}`, "יש לבחור מין"],
-    [p.birth && parseDate(p.birth), `#birth${i}`, "יש למלא תאריך לידה"],
-    [/^\d{5,9}$/.test(String(p.id || "").replace(/\D/g, "")), `#tz${i}`, "יש למלא מספר תעודת זהות תקין"],
+    [birth, `#birth${i}`, "יש למלא תאריך לידה"],
+    [!birth || !brk || birth < brk, `#birth${i}`, "תאריך הלידה חייב להיות לפני מועד הקרע"],
+    [/^\d{5,9}$/.test(digits), `#tz${i}`, "יש למלא מספר תעודת זהות תקין"],
+    [validIsraeliId(digits), `#tz${i}`, "מספר תעודת הזהות אינו תקין (ספרת הביקורת אינה מתאימה) — בדקו את הספרות"],
   ];
   for (const [ok, selector, message] of required){
     if (!ok){ markWizardInvalid(selector); return message; }
   }
   const noRights = state.rightsHolder === "a" ? i === 1 : state.rightsHolder === "b" ? i === 0 : false;
   if (noRights) return "";
+  if (p.intake && p.intake.mixed) return "הקבצים שהועלו לצד זה שייכים ליותר מאדם אחד — יש להחליף את הדוח";
   if (p.intake && p.intake.blocked) return ([...(p.intake.funds || []), ...(p.intake.capital || [])].find(f => f.adjustmentStatus !== "ok") || {}).adjustmentMessage || "דוח המסלקה אינו מתאים למועד הקרע";
   const funds = (p.funds || []).filter(f => String(f.name || "").trim() || Number(f.amount) > 0 || f.opened);
   const balances = (p.balances || []).filter(b => String(b.name || "").trim() || Number(b.amount) > 0);
@@ -1975,8 +2079,12 @@ function validPersonStep(i){
   if (badFundIndex >= 0){
     const details = document.querySelectorAll("#people .person")[i]?.querySelector("details");
     if (details) details.open = true;
-    return "יש להשלים שם קופה, קצבה חודשית ומועד פתיחה בכל קופה שהוזנה";
+    const f = funds[badFundIndex];
+    const what = [!String(f.name || "").trim() ? "שם" : "", !(Number(f.amount) > 0) ? "קצבה חודשית" : "", !parseDate(f.opened) ? "מועד פתיחה" : ""].filter(Boolean).join(", ");
+    return `יש להשלים ${what} בקופה ${String(f.name || "").trim() ? "„" + f.name.trim() + "”" : "מספר " + (badFundIndex + 1)}`;
   }
+  const earlyFund = birth ? funds.find(f => parseDate(f.opened) && parseDate(f.opened) < birth) : null;
+  if (earlyFund) return `מועד הפתיחה של „${earlyFund.name}” מוקדם מתאריך הלידה — בדקו את התאריכים`;
   if (badBalanceIndex >= 0) return "יש להשלים שם וסכום בכל יתרה צבורה שהוזנה";
   if (badCapitalIndex >= 0) return "יש להשלים שם וסכום בכל נכס הוני שהוזן";
   const validFund = funds.length > 0;
@@ -2007,7 +2115,19 @@ function validateWizardStep(step){
       if (!el || !String(el.value || "").trim()){ markWizardInvalid(selector); return message; }
     }
     const brk = parseDate($("#breakDate").value), start = parseDate($("#marriage").value);
+    if (!brk){ markWizardInvalid("#breakDate"); return "מועד הקרע אינו תאריך תקין"; }
+    if (!start){ markWizardInvalid("#marriage"); return "מועד תחילת השותפות אינו תאריך תקין"; }
     if (start >= brk){ markWizardInvalid("#marriage"); return "מועד תחילת השותפות חייב להיות לפני מועד הקרע"; }
+    const tooEarly = state.people.find(q => parseDate(q.birth) && start < parseDate(q.birth));
+    if (tooEarly){ markWizardInvalid("#marriage"); return `מועד תחילת השותפות מוקדם מתאריך הלידה של ${tooEarly.name || tooEarly.tag}`; }
+    for (const [ret, life, who] of [["#retM", "#lifeM", "גבר"], ["#retF", "#lifeF", "אישה"]]){
+      const r = parseFloat($(ret).value), l = parseFloat($(life).value);
+      if (!(r >= ASSUME_LIMITS.ret[0] && r <= ASSUME_LIMITS.ret[1])){ markWizardInvalid(ret); return `גיל הפרישה (${who}) חייב להיות בין ${ASSUME_LIMITS.ret[0]} ל־${ASSUME_LIMITS.ret[1]}`; }
+      if (!(l >= ASSUME_LIMITS.life[0] && l <= ASSUME_LIMITS.life[1])){ markWizardInvalid(life); return `תוחלת החיים (${who}) חייבת להיות בין ${ASSUME_LIMITS.life[0]} ל־${ASSUME_LIMITS.life[1]}`; }
+      if (l <= r){ markWizardInvalid(life); return `תוחלת החיים (${who}) חייבת להיות גבוהה מגיל הפרישה`; }
+    }
+    const rateV = parseFloat($("#rate").value);
+    if (!(rateV >= 0 && rateV <= 15)){ markWizardInvalid("#rate"); return "ריבית ההיוון חייבת להיות בין 0% ל־15%"; }
   }
   return "";
 }
@@ -2100,6 +2220,28 @@ function goWizardBack(){
 }
 
 /* ---------------- results ---------------- */
+/* סכום האיזון: לכל צד — חלק בן הזוג בפנסיה המהוונת (שווי × שיעור העברה),
+   ובנכסים ההוניים — החלק המשותף נטו ממס. החיובי = צד א׳ משלם לצד ב׳. */
+function balanceSummary(people){
+  let payA = 0, payB = 0, capA = 0, capB = 0;
+  people.forEach(([, r], idx) => {
+    (r.funds || []).forEach(f => {
+      if (!(f.amount > 0)) return;
+      const due = f.atBreakEarly * f.sh.share;
+      if (idx === 0) payA += due; else payB += due;
+    });
+    (r.capItems || []).forEach(c => {
+      if (!(c.value > 0)) return;
+      if (idx === 0) capA += c.marital; else capB += c.marital;
+    });
+  });
+  const pen = payA - payB, cap = (capA - capB) / 2, total = pen + cap;
+  return {
+    payA, payB, capA, capB, pen, cap, total,
+    penNet: Math.abs(pen), capDiff: Math.abs(capA - capB), capNet: Math.abs(cap), totalNet: Math.abs(total),
+    penPayer: pen >= 0 ? 0 : 1, capPayer: cap >= 0 ? 0 : 1, totalPayer: total >= 0 ? 0 : 1
+  };
+}
 function render(){
   const rate  = (Number($("#rate").value)  || 0) / 100;
   const tax   = (Number($("#tax").value)   || 0) / 100;
@@ -2108,7 +2250,6 @@ function render(){
   const opinionDate = parseDate($("#opinionDate").value);
   const breakDate = parseDate($("#breakDate").value);
   const marriage  = parseDate($("#marriage").value);
-  const solo = state.mode === "solo";
   /* A party without pension rights keeps their identity and birth date because
      those details still drive the mortality comparison. */
   const p1 = state.rightsHolder === "b" ? Object.assign({}, state.people[0], { funds: [], balances: [], capital: [] }) : state.people[0];
@@ -2125,49 +2266,57 @@ function render(){
     const el = document.querySelector(`[data-meta="${i}:${j}"]`);
     if (!el) return;
     const r = (i === 0 ? a : b).funds[j];
+    if (r && r.sh && r.sh.afterBreak){
+      el.textContent = "נפתחה במועד הקרע או אחריו — אינה נצברה בתקופת השותפות ולכן 0%";
+      el.classList.add("warn"); return;
+    }
     if (!r || !r.sh || r.sh.accrual == null){
       el.textContent = "ללא מועד פתיחה — מונח 50% מלא";
       el.classList.add("warn"); return;
     }
     el.classList.remove("warn");
+    const gp = Number(f.gilPrisha) || 0, ra = retireAge(state.people[i].gender);
     el.textContent = `שיעור להעברה ${(r.sh.share * 100).toFixed(2)}% · צבירה ${r.sh.accrual.toFixed(2)} שנים`
-      + (r.sh.raw > 1 ? " · נפתחה אחרי החתונה, לכן 50% מלא" : "");
+      + (r.sh.raw > 1 ? " · נפתחה אחרי החתונה, לכן 50% מלא" : "")
+      + (gp && state.people[i].gender && Math.abs(gp - ra) > 0.01 ? ` · בדוח הקופה גיל פרישה ${gp}, התחשיב מניח ${ra}` : "");
   }));
 
   const people = [[p1, a], [p2, b]];
-  /* Net transfer: each side's per-fund transfer amounts, netted against each other. */
-  /* Values only. The amount actually transferred is a legal determination and
-     the law bars stating it in a פסיקתה, so the tool does not produce it. */
+  const names = [state.people[0].name, p2.name];
+  /* צד ללא זכויות פנסיוניות — אין לו פירוט, אבל תאריך הלידה שלו עדיין
+     קובע את תרחיש התמותה המוקדמת, ולכן נדרש לשני הצדדים. */
+  const noRightsIdx = state.rightsHolder === "a" ? 1 : state.rightsHolder === "b" ? 0 : -1;
 
-  /* The public result and report deliberately present one consistent method:
-     capitalization until the earlier of the spouses' life expectancies. */
-  const APPROACHES = [
-    { n: 1, name: "היוון עד המועד המוקדם", sub: "התשלומים נספרים עד המועד המוקדם מבין תוחלות החיים",
-      va: a.v2, vb: b.v2, ta: a.share2, tb: b.share2 },
-  ].map(x => {
-    const net = Math.abs(x.ta - x.tb);
-    const payer = x.ta >= x.tb ? state.people[0].name : p2.name;
-    const payee = x.ta >= x.tb ? p2.name : state.people[0].name;
-    return Object.assign(x, { net, payer, payee });
-  });
+  /* Values only. The amount actually transferred is a legal determination and
+     the law bars stating it in a פסיקתה, so the tool does not produce it.
+     The headline and the report share one computation, so the number on the
+     screen is always the report's bottom line. */
+  const bal = balanceSummary(people);
 
   /* חסר תאריך לידה או מין — אין גיל פרישה ואין תוחלת חיים, ולכן אין
      מה לחשב. מוטב קו מפריד והסבר מאשר מספר חסר משמעות. */
   const missing = [state.people[0], p2]
-    .map((q, i) => (!q.birth || !q.gender) && !(solo && i === 1) ? (q.name || `צד ${i ? "ב" : "א"}`) : "")
+    .map((q, i) => (!q.birth || !q.gender) ? (q.name || `צד ${i ? "ב" : "א"}`) : "")
     .filter(Boolean);
-
-  const tiles = APPROACHES.map(x => `
-    <div class="tile headline">
-      <div class="t-label">${x.name}</div>
-      <div class="t-name">${escapeAttr(x.sub)}</div>
-      <div class="t-value num">${missing.length || !isFinite(x.net) ? "—" : ils.format(x.net)}</div>
-      <div class="t-sub">${missing.length ? "חסרים תאריך לידה ומין"
-        : x.net > 0 ? escapeAttr(x.payer) + " ← " + escapeAttr(x.payee) : "אין הפרש"}</div>
-    </div>`).join("")
+  const dir = (net, payer) => net > 0.5
+    ? escapeAttr(names[payer] || (payer ? "צד ב" : "צד א")) + " ← " + escapeAttr(names[1 - payer] || (payer ? "צד א" : "צד ב"))
+    : "אין הפרש";
+  const tile = (label, sub, net, payer, headline) => `
+    <div class="tile${headline ? " headline" : ""}">
+      <div class="t-label">${label}</div>
+      <div class="t-name">${escapeAttr(sub)}</div>
+      <div class="t-value num">${missing.length || !isFinite(net) ? "—" : ils.format(net)}</div>
+      <div class="t-sub">${missing.length ? "חסרים תאריך לידה ומין" : dir(net, payer)}</div>
+    </div>`;
+  const hasCapital = people.some(([, r]) => (r.capItems || []).some(c => c.value > 0));
+  const tiles = tile("סכום האיזון הכולל", "פנסיה מהוונת ונכסים הוניים, בקיזוז הדדי", bal.totalNet, bal.totalPayer, true)
+    + tile("פנסיה — היוון עד המועד המוקדם", "התשלומים נספרים עד המועד המוקדם מבין תוחלות החיים", bal.penNet, bal.penPayer, false)
+    + (hasCapital ? tile("נכסים הוניים", "מחצית ההפרש בין חלקי הצדדים, אחרי מס", bal.capNet, bal.capPayer, false) : "")
     + (missing.length ? `<div class="need-more" style="grid-column:1/-1">
         כדי לחשב יש להשלים תאריך לידה ומין עבור ${escapeAttr(missing.join(" ו־"))}.
-        הם קובעים את גיל הפרישה ואת תוחלת החיים, ודוח PDF של המסלקה אינו כולל אותם.</div>` : "");
+        הם קובעים את גיל הפרישה ואת תוחלת החיים, ודוח PDF של המסלקה אינו כולל אותם.</div>` : "")
+    + people.filter(([, r]) => r.valid && r.retiredAtBreak && r.monthly > 0).map(([p]) => `<div class="need-more" style="grid-column:1/-1">
+        ${escapeAttr(p.name || "צד")} הגיע/ה לגיל הפרישה לפני מועד הקרע — נספרו רק התשלומים ממועד הקרע ואילך. כדאי לוודא שהקצבה שהוזנה היא הקצבה המשולמת בפועל.</div>`).join("");
 
   const rowsFor = (p, r) => `
     <tr><td>קצבה חודשית מצטברת<span class="step-note">סכום כל הקרנות שהוזנו</span></td><td class="v">${ils2.format(r.monthly)}</td></tr>
@@ -2178,7 +2327,7 @@ function render(){
     <tr class="total"><td>שווי מהוון למועד הקרע</td><td class="v">${ils2.format(r.v2)}</td></tr>
     <tr><td colspan="2" style="background:var(--sunk);font-weight:600;color:var(--muted)">נכסים הוניים</td></tr>
     <tr><td>קרן השתלמות / גמל להשקעה — יתרה</td><td class="v">${ils2.format(r.capital)}</td></tr>
-    <tr><td>מס רווחי הון<span class="step-note">על הרווחים החייבים בלבד</span></td><td class="v">${ils2.format(r.capGainsTax)}</td></tr>
+    <tr><td>מס רווחי הון<span class="step-note">25% מהרווח החייב, או מהיתרה כשהרווח לא הוזן</span></td><td class="v">${ils2.format(r.capGainsTax)}</td></tr>
     <tr><td>יתרה נטו</td><td class="v">${ils2.format(r.capitalNet)}</td></tr>
     <tr class="total"><td>חלק מגיע<span class="step-note">לפי יחס שיתוף מהתאריכים</span></td><td class="v">${ils2.format(r.capitalShare)}</td></tr>`;
 
@@ -2190,7 +2339,7 @@ function render(){
       <td class="v">${ils2.format(f.atBreakEarly)}</td>
     </tr>`).join("");
 
-  const detail = people.map(([p, r], i) => (!r.valid || (solo && i === 1)) ? "" : `
+  const detail = people.map(([p, r], i) => (!r.valid || i === noRightsIdx) ? "" : `
     <div class="breakdown">
       <div class="bd-head"><h3>${escapeAttr(p.name)} — פירוט מלא</h3></div>
       <div class="table-scroll"><table>
@@ -2229,7 +2378,8 @@ function render(){
       const saverF = p.gender === "female";      /* חוסכת / חוסך */
       const spouseF = spouse.gender === "female";
       r.funds.forEach(f => {
-        if (!(f.amount > 0)) return;
+        /* קופה שנפתחה אחרי מועד הקרע — שיעור ההעברה 0%, ואין לה פסיקתא */
+        if (!(f.amount > 0) || f.sh.afterBreak) return;
         seq++;
         const missing = [];
         if (!p.id)      missing.push("ת.ז. של החוסך/ת");
@@ -2335,8 +2485,10 @@ function render(){
         ? ((breakDate - marriage) / DAY / 365).toFixed(2) : "—"],
       [`תאריך לידה של ${A0.gender === "female" ? "בת" : "בן"} הזוג — ${escapeAttr(A0.name)}:`, dateFmt(parseDate(A0.birth))],
       [`תאריך לידה של ${B0.gender === "female" ? "בת" : "בן"} הזוג — ${escapeAttr(B0.name)}:`, dateFmt(parseDate(B0.birth))],
-      ["הנחת גיל פרישה של הבעל:", "67"],
-      ["הנחת גיל פרישה של האישה:", "65"],
+      ["הנחת גיל פרישה של הבעל:", String(retireAge("male"))],
+      ["הנחת גיל פרישה של האישה:", String(retireAge("female"))],
+      ["הנחת תוחלת חיים — גבר (הלמ״ס):", String(lifeAge("male"))],
+      ["הנחת תוחלת חיים — אישה (הלמ״ס):", String(lifeAge("female"))],
       ["שיעור ההיוון השנתי:", (rate * 100).toFixed(2) + "%"],
       ["", "כל תוצאות החישובים בחוות דעת זו נכונות למועד החישוב, למעט במקומות בהם צוין אחרת."],
       ["", "כל הסכומים בחוות דעת זו נקובים בש״ח."]
@@ -2344,34 +2496,41 @@ function render(){
 
     let seq = 0;
     const rows = [];
-    let payA = 0, payB = 0;   /* חלק מגיע, per side, under חלופה ב */
-    people.forEach(([p, r], idx) => r.funds.forEach(f => {
+    const { payA, payB } = bal;   /* חלק מגיע, per side */
+    people.forEach(([p, r]) => r.funds.forEach(f => {
       if (!(f.amount > 0)) return;
-      seq++;
       const due = f.atBreakEarly * f.sh.share;
-      if (idx === 0) payA += due; else payB += due;
       rows.push(`<tr>
         <td>${escapeAttr(f.name || "—")} — ${escapeAttr(p.name)}</td>
         <td>${escapeAttr(f.body || "—")}</td>
-        <td>פסיקתא ${seq}</td>
+        <td>${f.sh.afterBreak ? "ללא פסיקתא — נפתחה אחרי הקרע" : "פסיקתא " + (++seq)}</td>
         <td class="n">${ils.format(f.atBreakEarly)}</td>
         <td class="n">${(f.sh.share * 100).toFixed(2)}%</td>
         <td class="n">${ils.format(due)}</td>
       </tr>`);
     }));
-    const penNet = Math.abs(payA - payB);
-    const penPayer = payA >= payB ? A0.name : B0.name;
-    const penPayee = payA >= payB ? B0.name : A0.name;
+    /* הצדדים מזוהים לפי מקומם (0 = צד א׳, 1 = צד ב׳) ולא לפי השם —
+       שני שמות זהים או ריקים לא יבלבלו את כיוון התשלום ואת לשון הפנייה. */
+    const P = [A0, B0];
+    /* חודש הדוחות — מתאריכי נכונות הנתונים שנקראו בפועל, לא תאריך קבוע */
+    const HEB_MONTHS = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+    const reportMonths = [...new Set(state.people.flatMap(p => [...((p.intake && p.intake.funds) || []), ...((p.intake && p.intake.capital) || [])])
+      .map(f => parseDate(f.asOf)).filter(Boolean).sort((x, y) => x - y)
+      .map(d => `${HEB_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`))];
+    const sourcesLine = reportMonths.length
+      ? `יתרות מסלקה פנסיונית נכונות ל${reportMonths.length > 1 ? "חודשים " + reportMonths.join(", ") : "חודש " + reportMonths[0]} ודוחות תקופתיים של גמל ופנסיה.`
+      : "יתרות מסלקה פנסיונית ודוחות תקופתיים של גמל ופנסיה שנמסרו לי.";
+    const nm = i => P[i].name;
+    const penNet = bal.penNet, penPayer = bal.penPayer, penPayee = 1 - penPayer;
 
     /* Capital assets: the report lists them per party with the share, then
        subtotals each side, takes the difference and halves it. */
     const capRows = [];
     const inactive = [];
-    let capA = 0, capB = 0, cgA = 0, cgB = 0;
-    people.forEach(([p, r], idx) => (r.capItems || []).forEach(c => {
+    let cgA = 0, cgB = 0;
+    people.forEach(([p, r]) => (r.capItems || []).forEach(c => {
       const amt = c.value || 0;
       if (!(amt > 0)) return;
-      if (idx === 0){ capA += c.marital; } else { capB += c.marital; }
       const pct = `${(c.sh.share * 100).toFixed(2)}%`;
       if (c.atRetire){
         inactive.push({ p, r, c });
@@ -2395,32 +2554,24 @@ function render(){
     const skippedAll = people.flatMap(([p]) => ((p.intake && p.intake.skipped) || []).filter(x => x.balance > 0));
     cgA = a.capGainsTax; cgB = b.capGainsTax;
     /* Totals are the marital portion of each side (net of tax × date ratio). */
-    const totA = capA, totB = capB;
-    const capDiff = Math.abs(totA - totB);
-    const capNet = capDiff / 2;
-    const capPayer = totA >= totB ? A0.name : B0.name;
-    const capPayee = totA >= totB ? B0.name : A0.name;
+    const totA = bal.capA, totB = bal.capB;
+    const capDiff = bal.capDiff;
+    const capNet = bal.capNet;
+    const capPayer = bal.capPayer, capPayee = 1 - capPayer;
 
     /* "ישלם" or "תשלם", by the payer's gender */
-    const genderOf = who => (who === A0.name ? A0.gender : B0.gender);
-    const payVerb   = who => genderOf(who) === "female" ? "תשלם"  : "ישלם";
-    const transVerb = who => genderOf(who) === "female" ? "תעביר" : "יעביר";
-    /* The single displayed alternative nets capital and pension in cash. */
-    const sgn = who => who === A0.name ? 1 : -1;
+    const genderOf  = i => P[i].gender;
+    const payVerb   = i => genderOf(i) === "female" ? "תשלם"  : "ישלם";
+    const transVerb = i => genderOf(i) === "female" ? "תעביר" : "יעביר";
     /* Names are entered surname first (as in the clearing-house reports),
        so the personal name is the last word. */
-    const first = n => String(n || "").trim().split(/\s+/).slice(-1)[0] || n;
+    const first = i => { const n = String(nm(i) || "").trim(); return n.split(/\s+/).slice(-1)[0] || n; };
     const nf0 = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 0 });
     const noPension = state.rightsHolder === "a" ? B0.name : state.rightsHolder === "b" ? A0.name :
       (payA > 0 && payB === 0 ? B0.name : payB > 0 && payA === 0 ? A0.name : "");
-    const altA_A = capNet * (capPayer === A0.name ? 1 : -1);
-    const pen_A  = penNet * (penPayer === A0.name ? 1 : -1);
-    const altAnet = Math.abs(altA_A);
-    const altBnet = Math.abs(altA_A + pen_A);
-    const altApayer = altA_A >= 0 ? A0.name : B0.name;
-    const altApayee = altA_A >= 0 ? B0.name : A0.name;
-    const altBpayer = (altA_A + pen_A) >= 0 ? A0.name : B0.name;
-    const altBpayee = (altA_A + pen_A) >= 0 ? B0.name : A0.name;
+    /* The single displayed alternative nets capital and pension in cash. */
+    const altBnet = bal.totalNet;
+    const altBpayer = bal.totalPayer, altBpayee = 1 - altBpayer;
 
     return `
     <div class="doc" id="opinionDoc">
@@ -2474,7 +2625,7 @@ function render(){
             <td class="n">${fund.originalKitzba ? ils.format(fund.kitzba) : "—"}</td>
           </tr>`).join("")}</tbody>
         </table>
-        <p class="doc-note">מקור ההתאמה: פירוט ההפקדות בפועל בדוח המסלקה. ההפקדות שתאריך הערך שלהן לאחר מועד הקרע ועד תאריך נכונות הדוח נגרעו מן היתרה; הקצבה הותאמה באותו יחס שבין היתרה המתוקנת ליתרה המדווחת.</p>` : ""}
+        <p class="doc-note">מקור ההתאמה: פירוט ההפקדות בפועל בדוח המסלקה. נגרעו מן היתרה ההפקדות בגין חודשי שכר שלאחר חודש הקרע (ובהיעדר חודש שכר — הפקדות שתאריך הערך שלהן לאחר מועד הקרע), שנכנסו עד תאריך נכונות הדוח; הפקדה על שכר חודש הקרע עצמו נותרה בתקופה המשותפת. הקצבה הותאמה באותו יחס שבין היתרה המתוקנת ליתרה המדווחת.</p>` : ""}
       </div>
 
       ${cards.map((card, cardIndex) => `<div class="doc-block">
@@ -2507,7 +2658,7 @@ function render(){
               <td class="n">${ils.format(penNet)}</td></tr>
           </tbody>
         </table>
-        <p><strong>קיזוז במזומן של חלופה זו לאיזון הזכויות הפנסיוניות — ${escapeAttr(penPayer)} ${payVerb(penPayer)} ל${escapeAttr(penPayee)} סכום חד־פעמי של ${ils.format(penNet)}.</strong></p>
+        <p><strong>קיזוז במזומן של חלופה זו לאיזון הזכויות הפנסיוניות — ${escapeAttr(nm(penPayer))} ${payVerb(penPayer)} ל${escapeAttr(nm(penPayee))} סכום חד־פעמי של ${ils.format(penNet)}.</strong></p>
         <h4>הערות</h4>
         <ul class="doc-list">
           <li>הנתונים מבוססים על דוחות מסלקה ודוחות יתרה עדכניים סמוך למועד הקרע שנמסרו לי.</li>
@@ -2527,24 +2678,39 @@ function render(){
           <tbody>
             ${capRows.join("") || '<tr><td colspan="4">לא הוזנו נכסים הוניים</td></tr>'}
             ${(cgA + cgB) > 0 ? `<tr><td>ניכוי מס רווחי הון 25%</td>
-              <td>25% מיתרת הנכסים החייבים במס</td>
+              <td>25% מהרווח החייב או מהיתרה (ראו הערה)</td>
               <td class="n">${ils.format(cgA + cgB)}</td><td></td></tr>` : ""}
             <tr><td colspan="2">סה״כ ${escapeAttr(A0.name)}</td><td class="n">${ils.format(totA)}</td><td></td></tr>
             <tr><td colspan="2">סה״כ ${escapeAttr(B0.name)}</td><td class="n">${ils.format(totB)}</td><td></td></tr>
             <tr><td colspan="2">הפרש</td><td class="n">${ils.format(capDiff)}</td><td></td></tr>
-            <tr class="sum"><td colspan="2">${escapeAttr(capPayer)} ${transVerb(capPayer)} ל${escapeAttr(capPayee)} ליום הקרע</td>
+            <tr class="sum"><td colspan="2">${escapeAttr(nm(capPayer))} ${transVerb(capPayer)} ל${escapeAttr(nm(capPayee))} ליום הקרע</td>
               <td class="n">${ils.format(capNet)}</td><td></td></tr>
           </tbody>
         </table>
         <ul class="doc-list">
-          ${hasStudy ? `<li>קרנות השתלמות, לפי מידע שנמסר לי, נזילות וזמינות למשיכה. ככל שקרן ההשתלמות אינה נזילה, יש לשקול קיזוז בתשלומים או שערוך למועד הנזילות.</li>` : ""}
+          ${(() => {
+            if (!hasStudy) return "";
+            const locked = people.flatMap(([p, r]) => (r.capItems || []).filter(c => c.tax > 0 && /השתלמות/.test(String(c.name || "") + " " + String(c.kind || ""))).map(c => ({ p, c })));
+            return locked.length
+              ? `<li>${locked.map(({ p, c }) => `${escapeAttr(c.name || "קרן השתלמות")} של ${escapeAttr(p.name)}`).join("; ")} — טרם הגיעה למועד הנזילות (שש שנים ממועד הפתיחה), ולכן הובאה בחשבון בניכוי מס. ככל שהצדדים יעדיפו, ניתן לשקול קיזוז בתשלומים או שערוך למועד הנזילות.</li>`
+              : `<li>קרנות השתלמות, לפי מידע שנמסר לי, נזילות וזמינות למשיכה. ככל שקרן ההשתלמות אינה נזילה, יש לשקול קיזוז בתשלומים או שערוך למועד הנזילות.</li>`;
+          })()}
           ${inactive.map(({ r, c }) => {
             const pct = +(rate * 100).toFixed(2);
             const base = +(1 + rate).toFixed(4);
             return `<li>הפנסיה הלא פעילה אינה נכללת בפסיקתות. מדובר בסכום חד־פעמי של ${ils.format(Number(c.amount) || 0)} שיתקבל רק בגיל הפרישה (${dateFmt(r.retire)}), ולכן הוא הוון למועד הקרע לאורך ${r.years.toFixed(2)} שנים בשיעור ${pct}% לשנה: ${nf0.format(Number(c.amount) || 0)} ÷ ${base}^${r.years.toFixed(4)} = ${ils.format(c.value)}. זהו היוון של סכום ולא של קצבה. הסכום מתחלק בשיעור 50% ככל נכס הוני.</li>`;
           }).join("")}
           ${inactive.length ? `<li>משיכה הונית של כספי הפנסיה הלא פעילה חייבת במס. ניתן לבצע פריסת מס על פני עד שש שנות מס בהתאם לסעיף 8(ג) לפקודת מס הכנסה, ושיעור המס בפועל תלוי בהכנסות ובמדרגות המס של ${inactive[0].p.gender === "female" ? "המושכת" : "המושך"}. התחשיב לעיל הוא לפני מס.</li>` : ""}
-          <li>עבור פוליסות חיסכון וגמל להשקעה נלקח בחשבון מס רווחי הון של 25% על הרווחים הריאליים.${(cgA + cgB) > 0 ? "" : " בתיק זה לא הוזנו רווחים חייבים."}</li>
+          <li>${(() => {
+            const items = people.flatMap(([, r]) => (r.capItems || []).filter(c => c.tax > 0));
+            if (!items.length) return "בתיק זה לא נוכה מס רווחי הון: אין נכס הוני החייב במס במועד הקרע (קרן השתלמות שטרם הגיעה למועד הנזילות או גמל להשקעה).";
+            const onGain = items.filter(c => c.taxOnGain).length;
+            return onGain === items.length
+              ? "עבור קרן השתלמות שאינה נזילה וגמל להשקעה נוכה מס רווחי הון של 25% מן הרווח החייב במס שהוזן לכל נכס."
+              : onGain
+                ? "עבור קרן השתלמות שאינה נזילה וגמל להשקעה נוכה מס רווחי הון של 25%: מן הרווח החייב במס בנכסים שבהם הוזן, ומן היתרה כולה בנכסים שבהם לא הוזן רווח."
+                : "עבור קרן השתלמות שאינה נזילה וגמל להשקעה נוכה מס רווחי הון של 25% מן היתרה כולה, בהיעדר נתון על הרווח הריאלי. ככל שיומצא אישור על הרווח החייב, ניתן לחשב את המס על הרווח בלבד.";
+          })()}</li>
           ${skippedAll.map(x => `<li>${escapeAttr(x.plan || x.kind || "מוצר")}${x.acct ? " " + escapeAttr(x.acct) : ""} (${ils2.format(x.balance)}) לא נכלל — ${escapeAttr(x.why || "דורש טיפול ידני")}.</li>`).join("")}
         </ul>
       </div>
@@ -2554,20 +2720,20 @@ function render(){
         <table class="doc-tbl">
           <thead><tr><th>תיאור סעיף</th><th>האיזון המוצע</th></tr></thead>
           <tbody>
-            <tr><td>פנסיה פעילה</td><td class="n">${ils.format(penNet)}</td></tr>
+            <tr><td>פנסיה פעילה — ${escapeAttr(first(penPayer))} ל${escapeAttr(first(penPayee))}</td><td class="n">${ils.format(penNet)}</td></tr>
             <tr><td>${capTitle} — ${escapeAttr(first(capPayer))} ל${escapeAttr(first(capPayee))}</td>
                 <td class="n">${ils.format(capNet)}</td></tr>
-            <tr class="sum"><td>נטו לתשלום — ${escapeAttr(altBpayer)} ל${escapeAttr(altBpayee)}</td>
+            <tr class="sum"><td>נטו לתשלום — ${escapeAttr(nm(altBpayer))} ל${escapeAttr(nm(altBpayee))}</td>
               <td class="n">${ils.format(altBnet)}</td></tr>
           </tbody>
         </table>
         <ul class="doc-list">
-          <li>לפי החלופה המוצגת, ${escapeAttr(altBpayer)} ${payVerb(altBpayer)} ל${escapeAttr(altBpayee)} סך כולל של ${ils.format(altBnet)}.</li>
+          <li>לפי החלופה המוצגת, ${escapeAttr(nm(altBpayer))} ${payVerb(altBpayer)} ל${escapeAttr(nm(altBpayee))} סך כולל של ${ils.format(altBnet)}.</li>
           ${noPension ? `<li>ל${escapeAttr(noPension)} אין זכויות פנסיוניות, ולפיכך ההעברה חד־כיוונית ואין קיזוז הדדי.</li>` : `<li>הסכומים מחושבים בקיזוז הדדי בין זכויות הצדדים.</li>`}
         </ul>
         <h3>פרק 5 — הנתונים ששימשו אותי בתחשיב</h3>
         <ul class="doc-list doc-sources">
-          <li>נספח 1 — יתרות מסלקה פנסיונית עדכניות מחודש יוני 2026 ודוחות תקופתיים של גמל ופנסיה.</li>
+          <li>נספח 1 — ${sourcesLine}</li>
           <li>נספח 2 — דוחות על משיכת פיצויים.</li>
           <li>נספח 3 — נתונים על תוחלת חיים: <a href="https://www.cbs.gov.il/he/publications/DocLib/2025/1975/h_print.pdf">הלשכה המרכזית לסטטיסטיקה</a>.</li>
           <li>נספח 4 — מידע מהצדדים לגבי איחוד פנסיוני ותאריכי לידה.</li>
@@ -2811,7 +2977,6 @@ async function exportPdf(blocks, kind, btn){
       .replace(/\s+/g, " ")
       .trim();
     const coupleNames = state.people
-      .slice(0, state.mode === "solo" ? 1 : 2)
       .map(person => safeFilePart(person.name))
       .filter(Boolean)
       .join(" ו");
@@ -2941,7 +3106,8 @@ document.addEventListener("input", e => {
   const wizardStatus = $("#wizardStatus");
   if (wizardStatus && wizardStatus.classList.contains("error")){ wizardStatus.textContent = `שלב ${wizardStep + 1} מתוך ${wizardLabels.length}: ${wizardLabels[wizardStep]}`; wizardStatus.classList.remove("error"); }
   if (["rate","breakDate","marriage","tax","court","judge","caseNo","opinionDate",
-       "expName","expId","expAddr","expTitle","expCv"].indexOf(t.id) !== -1){
+       "retM","retF","lifeM","lifeF",
+       "expName","expId","expAddr","expTitle","expCv","expLicenses"].indexOf(t.id) !== -1){
     if (t.id === "breakDate"){ const nv = normYmd(t.value); if (nv !== t.value) t.value = nv; state.people.forEach((_, i) => refreshMaslakaAdjustment(i)); renderIntake(); renderPeople(); }
     render(); return;
   }
@@ -3143,6 +3309,12 @@ function showPrintHelp(){
     });
   }
 }
+
+/* תאריך עריכת חוות הדעת — היום, כברירת מחדל שאפשר לשנות */
+(function defaultOpinionDate(){
+  const el = $("#opinionDate");
+  if (el && !el.value){ const d = new Date(); el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+})();
 
 renderIntake();
 renderPeople();

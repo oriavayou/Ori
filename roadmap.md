@@ -17,3 +17,11 @@
 - [x] Redesign the step-by-step guide box (numbered circles, gold-green accent bar, styled tip callout) and emphasize automatic fill from the maslaka report
 - [x] Apply the six-month actual-deposit adjustment and blocking rule to capital holdings
 - [x] Fix wrapping in all opinion tables and verify pagination, preview and PDF with an uploaded clearing-house report
+- [x] Zero transfer share (and no פסיקתא) for funds opened after the break; value retirees only from the break onward
+- [x] Configurable retirement ages and life expectancies, stated in the opinion's assumptions
+- [x] One shared balance computation for the headline and the report; headline shows total, pension and capital
+- [x] Capital-gains tax on the entered taxable gain when known; tax by product kind, not only plan name
+- [x] Deposit deduction: all salary-month formats, nothing after the balance date
+- [x] Block mixed-person uploads; Israeli ID check digit; date sanity checks; plausibility notes on read pensions
+- [x] Report sources month taken from the actual reports; fixed side-B-only mode; Rubik font for Hebrew
+- [x] Browser test suite for calculations, XML reading and the full wizard
