@@ -852,6 +852,13 @@ function transferShare(marriage, breakDate, opened){
   return { share: Math.min(1, raw) / 2, accrual, raw, shared, joint: Math.min(shared, accrual) };
 }
 
+/* קופת גמל (גם לא פעילה, גם מרכזית לפיצויים) היא חיסכון פנסיוני לפי החוק
+   ומקבלת פסיקתא. גמל להשקעה וקרן השתלמות — לא; הן מאוזנות במזומן. */
+function capitalHasPsikta(c){
+  const k = `${c.name || ""} ${c.kind || ""}`;
+  return !c.atRetire && /גמל/.test(k) && !/להשקעה|השתלמות/.test(k);
+}
+
 function computePerson(p, rate, breakDate, otherMortality, taxRate, marriage){
   const birth = parseDate(p.birth);
   const out = { valid: false, funds: [] };
@@ -919,6 +926,7 @@ function computePerson(p, rate, breakDate, otherMortality, taxRate, marriage){
     /* נכס שהצדדים הסכימו שלא לאזן — מוצג בדוח, אך אינו נכנס לחישוב */
     const k = b.exclude ? 0 : 1;
     return Object.assign({}, b, { value, tax, sh, taxable: tax > 0, taxOnGain: tax > 0 && gainOf(b) != null, excluded: !!b.exclude,
+      psikta: capitalHasPsikta(b),
       marital: (value - tax) * sh.share * 2 * k, due: (value - tax) * sh.share * k });
   });
   const counted = capItems.filter(b => !b.excluded);
@@ -1875,7 +1883,7 @@ function refreshMaslakaAdjustment(i){
   p.capital = t.capital.map(c => {
     let liquid = false;
     if (c.hishtalmut && brk) liquid = studyFundLiquidAt(c, brk);
-    return { name: c.plan, kind: c.kind, taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
+    return { name: c.plan, kind: c.kind, acct: c.acct, body: c.body, nikuim: c.nikuim || "", taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
              amount: Math.round(c.balance * 100) / 100, liquid, opened: seniority(c), adjustment: c,
              exclude: prevExclude.get(`${c.acct}|${c.seq}`) || false };
   });
@@ -2326,7 +2334,7 @@ function goWizardBack(){
 /* סכום האיזון: לכל צד — חלק בן הזוג בפנסיה המהוונת (שווי × שיעור העברה),
    ובנכסים ההוניים — החלק המשותף נטו ממס. החיובי = צד א׳ משלם לצד ב׳. */
 function balanceSummary(people){
-  let payA = 0, payB = 0, capA = 0, capB = 0;
+  let payA = 0, payB = 0, capA = 0, capB = 0, cashA = 0, cashB = 0;
   people.forEach(([, r], idx) => {
     (r.funds || []).forEach(f => {
       if (!(f.amount > 0)) return;
@@ -2336,11 +2344,13 @@ function balanceSummary(people){
     (r.capItems || []).forEach(c => {
       if (!(c.value > 0)) return;
       if (idx === 0) capA += c.marital; else capB += c.marital;
+      if (!c.psikta){ if (idx === 0) cashA += c.marital; else cashB += c.marital; }
     });
   });
-  const pen = payA - payB, cap = (capA - capB) / 2, total = pen + cap;
+  const pen = payA - payB, cap = (capA - capB) / 2, total = pen + cap, cash = (cashA - cashB) / 2;
   return {
-    payA, payB, capA, capB, pen, cap, total,
+    payA, payB, capA, capB, pen, cap, total, cash,
+    cashNet: Math.abs(cash), cashPayer: cash >= 0 ? 0 : 1,
     penNet: Math.abs(pen), capDiff: Math.abs(capA - capB), capNet: Math.abs(cap), totalNet: Math.abs(total),
     penPayer: pen >= 0 ? 0 : 1, capPayer: cap >= 0 ? 0 : 1, totalPayer: total >= 0 ? 0 : 1
   };
@@ -2412,7 +2422,7 @@ function render(){
       <div class="t-sub">${missing.length ? "חסרים תאריך לידה ומין" : dir(net, payer)}</div>
     </div>`;
   const tiles = tile("חלופה ב׳ — הכול במזומן", "פנסיה מהוונת ונכסים הוניים, בקיזוז הדדי", bal.totalNet, bal.totalPayer, true)
-    + tile("חלופה א׳ — פסיקתות", "הפנסיה מועברת בפסיקתא; במזומן רק הנכסים ההוניים", bal.capNet, bal.capPayer, false)
+    + tile("חלופה א׳ — פסיקתות", "פנסיה וקופות גמל בפסיקתא; במזומן רק השתלמות וגמל להשקעה", bal.cashNet, bal.cashPayer, false)
     + tile("מזה: פנסיה מהוונת", "היוון עד המועד המוקדם מבין תוחלות החיים", bal.penNet, bal.penPayer, false)
     + (missing.length ? `<div class="need-more" style="grid-column:1/-1">
         כדי לחשב יש להשלים תאריך לידה ומין עבור ${escapeAttr(missing.join(" ו־"))}.
@@ -2472,17 +2482,25 @@ function render(){
      the parties table, then a signature line for the court. Only products the
      חוק לחלוקת חיסכון פנסיוני covers belong here — study funds, savings
      policies and provident/investment accounts are handled separately. */
+  /* כל מה שמקבל פסיקתא, ממוספר פעם אחת: קרנות הפנסיה ואחריהן קופות הגמל
+     של כל צד. קופה שנפתחה אחרי מועד הקרע — שיעור ההעברה 0%, ואין לה פסיקתא. */
+  const psiktaSeq = new Map();
+  const psiktaList = [];
+  people.forEach(([p, r], i) => {
+    r.funds.forEach(f => { if (f.amount > 0 && !f.sh.afterBreak) psiktaList.push({ p, i, f }); });
+    (r.capItems || []).forEach(c => { if (c.psikta && !c.excluded && c.value > 0 && c.sh.share > 0)
+      psiktaList.push({ p, i, f: Object.assign({}, c, { opened: parseDate(c.opened) }), src: c }); });
+  });
+  psiktaList.forEach((x, k) => psiktaSeq.set(x.src || x.f, k + 1));
+
   function psiktaCards(){
     const cards = [];
-    let seq = 0;
-    people.forEach(([p, r], i) => {
+    psiktaList.forEach(({ p, i, f }, k) => {
+      const seq = k + 1;
       const spouse = i === 0 ? p2 : state.people[0];
       const saverF = p.gender === "female";      /* חוסכת / חוסך */
       const spouseF = spouse.gender === "female";
-      r.funds.forEach(f => {
-        /* קופה שנפתחה אחרי מועד הקרע — שיעור ההעברה 0%, ואין לה פסיקתא */
-        if (!(f.amount > 0) || f.sh.afterBreak) return;
-        seq++;
+      {
         const missing = [];
         if (!p.id)      missing.push("ת.ז. של החוסך/ת");
         if (!spouse.id) missing.push("ת.ז. של בן/בת הזוג");
@@ -2531,7 +2549,7 @@ function render(){
           </div>
           ${missing.length ? `<div class="ps-missing">חסר להשלמה: ${missing.join(" · ")}</div>` : ""}
         </article>`);
-      });
+      }
     });
     return cards;
   }
@@ -2554,7 +2572,7 @@ function render(){
         <strong>הבהרות</strong>
         <ul>
           <li>לפי החוק יש לפרט בפסיקתא רק את שיעור חלק בן/בת הזוג לשעבר בצבירה. אין לפרט את סך הצבירה או את הפנסיה.</li>
-          <li>הפסיקתות אינן כוללות קרנות השתלמות, פוליסות חיסכון, גמל וגמל להשקעה.</li>
+          <li>הפסיקתות אינן כוללות קרנות השתלמות, פוליסות חיסכון וגמל להשקעה.</li>
           <li>הפסיקתות אינן כוללות חיסכון פנסיוני שקדם לתקופת השותפות ושלא הופקד אליו במהלכה.</li>
           <li>הפסיקתות אינן כוללות ביטוח אובדן כושר עבודה וביטוחי חיים ללא חיסכון.</li>
           <li>יישום העברת הזכויות אינו מיידי, ובפרט לגבי כספי פיצויי פיטורים ייתכן שיושלם רק בתום העסקה.</li>
@@ -2596,7 +2614,6 @@ function render(){
       ["", "כל הסכומים בחוות דעת זו נקובים בש״ח."]
     ];
 
-    let seq = 0;
     const rows = [];
     const { payA, payB } = bal;   /* חלק מגיע, per side */
     people.forEach(([p, r]) => r.funds.forEach(f => {
@@ -2605,7 +2622,7 @@ function render(){
       rows.push(`<tr>
         <td>${escapeAttr(f.name || "—")} — ${escapeAttr(p.name)}</td>
         <td>${escapeAttr(f.body || "—")}</td>
-        <td>${f.sh.afterBreak ? "ללא פסיקתא — נפתחה אחרי הקרע" : "פסיקתא " + (++seq)}</td>
+        <td>${f.sh.afterBreak ? "ללא פסיקתא — נפתחה אחרי הקרע" : "פסיקתא " + psiktaSeq.get(f)}</td>
         <td class="n">${ils.format(f.atBreakEarly)}</td>
         <td class="n">${(f.sh.share * 100).toFixed(2)}%</td>
         <td class="n">${ils.format(due)}</td>
@@ -2648,7 +2665,7 @@ function render(){
       }
       capRows.push(`<tr>
         <td>${escapeAttr(p.name)} — ${escapeAttr(c.name || "—")}</td>
-        <td>דוח שנתי ודוח מסלקה</td>
+        <td>${psiktaSeq.has(c) ? `דוח מסלקה · פסיקתא ${psiktaSeq.get(c)}` : "דוח שנתי ודוח מסלקה"}</td>
         <td class="n">${ils.format(amt)}</td>
         <td class="n">${pct}</td>
       </tr>`);
@@ -2670,6 +2687,9 @@ function render(){
     const capDiff = bal.capDiff;
     const capNet = bal.capNet;
     const capPayer = bal.capPayer, capPayee = 1 - capPayer;
+    /* בחלופה א׳ קופות הגמל עוברות בפסיקתא; במזומן נשאר רק מה שאין לו פסיקתא */
+    const cashNet = bal.cashNet, cashPayer = bal.cashPayer, cashPayee = 1 - cashPayer;
+    const hasGemelPsikta = people.some(([, r]) => (r.capItems || []).some(c => psiktaSeq.has(c)));
 
     /* "ישלם" or "תשלם", by the payer's gender */
     const genderOf  = i => P[i].gender;
@@ -2680,7 +2700,8 @@ function render(){
     const first = i => { const n = String(nm(i) || "").trim(); return n.split(/\s+/).slice(-1)[0] || n; };
     const nf0 = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 0 });
     const noPension = state.rightsHolder === "a" ? B0.name : state.rightsHolder === "b" ? A0.name :
-      (payA > 0 && payB === 0 ? B0.name : payB > 0 && payA === 0 ? A0.name : "");
+      (() => { const has = [0, 1].map(i => psiktaList.some(x => x.i === i));
+               return has[0] && !has[1] ? B0.name : has[1] && !has[0] ? A0.name : ""; })();
     /* The single displayed alternative nets capital and pension in cash. */
     const altBnet = bal.totalNet;
     const altBpayer = bal.totalPayer, altBpayee = 1 - altBpayer;
@@ -2751,7 +2772,7 @@ function render(){
         <h3>פרק 2 — הבהרות לפסיקתות</h3>
         <ul class="doc-list">
           <li>לפי החוק יש לפרט בפסיקתא רק את שיעור חלק בן/בת הזוג לשעבר בצבירה. אין לפרט את סך הצבירה או את הפנסיה.</li>
-          <li>הפסיקתות אינן כוללות קרנות השתלמות, פוליסות חיסכון, גמל וגמל להשקעה.</li>
+          <li>הפסיקתות אינן כוללות קרנות השתלמות, פוליסות חיסכון וגמל להשקעה.</li>
           <li>הפסיקתות אינן כוללות חיסכון פנסיוני שקדם לתקופת השותפות ושלא הופקד אליו במהלכה.</li>
           <li>הפסיקתות אינן כוללות ביטוח אובדן כושר עבודה וביטוחי חיים ללא חיסכון.</li>
           <li>יישום העברת הזכויות אינו מיידי, ובפרט לגבי כספי פיצויי פיטורים ייתכן שיושלם רק בתום ההעסקה.</li>
@@ -2838,14 +2859,14 @@ function render(){
           <tbody>
             <tr><td>פנסיה פעילה${penNet > 0.5 ? ` — ${escapeAttr(first(penPayer))} ל${escapeAttr(first(penPayee))}` : ""}</td><td>איזון באמצעות פסיקתא</td><td class="n">${ils.format(penNet)}</td></tr>
             <tr><td>${capTitle}${capNet > 0.5 ? ` — ${escapeAttr(first(capPayer))} ל${escapeAttr(first(capPayee))}` : ""}</td>
-                <td class="n">${ils.format(capNet)}</td><td class="n">${ils.format(capNet)}</td></tr>
+                <td class="n">${hasGemelPsikta ? `קופות גמל בפסיקתא${cashNet > 0.5 ? `; היתר ${ils.format(cashNet)}` : ""}` : ils.format(cashNet)}</td><td class="n">${ils.format(capNet)}</td></tr>
             <tr class="sum"><td>נטו לתשלום</td>
-              <td class="n">${capNet > 0.5 ? `${escapeAttr(first(capPayer))} ל${escapeAttr(first(capPayee))}: ` : ""}${ils.format(capNet)}</td>
+              <td class="n">${cashNet > 0.5 ? `${escapeAttr(first(cashPayer))} ל${escapeAttr(first(cashPayee))}: ` : ""}${ils.format(cashNet)}</td>
               <td class="n">${altBnet > 0.5 ? `${escapeAttr(first(altBpayer))} ל${escapeAttr(first(altBpayee))}: ` : ""}${ils.format(altBnet)}</td></tr>
           </tbody>
         </table>
         <ul class="doc-list">
-          <li>בחלופה א׳ ייחתמו הפסיקתות שבפרק 2, הזכויות בפנסיה יועברו ישירות מהגוף המשלם לפי השיעור הנקוב${capNet > 0.5 ? `, ובנוסף ${escapeAttr(nm(capPayer))} ${payVerb(capPayer)} ל${escapeAttr(nm(capPayee))} ${ils.format(capNet)} בגין ${capTitle}` : ""}.</li>
+          <li>בחלופה א׳ ייחתמו הפסיקתות שבפרק 2, הזכויות בפנסיה${hasGemelPsikta ? " ובקופות הגמל" : ""} יועברו ישירות מהגוף המשלם לפי השיעור הנקוב${cashNet > 0.5 ? `, ובנוסף ${escapeAttr(nm(cashPayer))} ${payVerb(cashPayer)} ל${escapeAttr(nm(cashPayee))} ${ils.format(cashNet)} בגין הנכסים שאין להם פסיקתא` : ""}.</li>
           <li>בחלופה ב׳ לא תיכתב פסיקתא, ו${escapeAttr(nm(altBpayer))} ${payVerb(altBpayer)} ל${escapeAttr(nm(altBpayee))} סך כולל של ${ils.format(altBnet)}.</li>
           ${noPension ? `<li>ל${escapeAttr(noPension)} אין זכויות פנסיוניות, ולפיכך ההעברה חד־כיוונית ואין קיזוז הדדי.</li>` : `<li>הסכומים מחושבים בקיזוז הדדי בין זכויות הצדדים.</li>`}
         </ul>

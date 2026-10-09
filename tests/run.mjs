@@ -440,6 +440,17 @@ test("transfer share runs from the first join date, not the current plan's openi
   assert.equal(r.share, 46.59, "as in the actuary's opinion for this fund");
 });
 
+test("a provident fund gets a פסיקתא; an investment provident fund and a study fund do not", async (page) => {
+  const r = await page.evaluate(() => [
+    capitalHasPsikta({ name: "אקסלנס — קופת גמל", kind: "קופת גמל" }),
+    capitalHasPsikta({ name: "הראל", kind: "קופת גמל מרכזית לפיצויים" }),
+    capitalHasPsikta({ name: "מיטב גמל להשקעה", kind: "קופת גמל" }),
+    capitalHasPsikta({ name: "כלל", kind: "קרן השתלמות" }),
+    capitalHasPsikta({ name: "קופת גמל", atRetire: true }),
+  ]);
+  assert.deepEqual(r, [true, true, false, false, false]);
+});
+
 test("salary month parsing covers PDF and XML formats", async (page) => {
   const r = await page.evaluate(() =>
     ["06/2025", "202506", "20250601", "062025", "2025-06", "6/25", "15/06/2025", "abc"].map((v) => {

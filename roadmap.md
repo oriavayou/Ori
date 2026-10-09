@@ -28,3 +28,4 @@
 - [x] Adjust reports dated long after the break as the signed opinions do: deduct listed deposits, estimate unlisted months, keep transfers-in, disclose all
 - [x] Both alternatives (פסיקתות / all cash) in the opinion and headline, as in the signed opinions
 - [x] "Not balanced by agreement" option for capital assets; section-47 duplicate deposits counted once
+- [x] Provident funds get a פסיקתא; investment provident and study funds are balanced in cash
