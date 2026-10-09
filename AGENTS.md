@@ -25,3 +25,4 @@
 - Deposit tables are attributed by their own header row (policy number, then managing company, product type, active status), because several funds of one person often share the ID as policy number. An attribution that stays ambiguous is not made.
 - A salary month that starts on or after the break date is post-break: with a break on the 1st, that whole month's deposits are deducted; with a mid-month break, the break month stays in the partnership.
 - A study fund is liquid at the break when its reported tax-benefit eligibility date is on or before the break; otherwise six years from the first join date (not the plan opening date, which resets on transfer).
+- The transfer share of a fund read from a report runs from its first join date (seniority) when that is earlier than the current plan's opening date, because a plan's opening date resets on transfer.

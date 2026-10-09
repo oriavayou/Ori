@@ -1866,14 +1866,17 @@ function refreshMaslakaAdjustment(i){
   t.capital = (t.rawCapital || []).map(c => adjustFundToBreak(c, brk));
   t.blocked = !!t.mixed || [...t.funds, ...t.capital].some(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending");
   const held = f => f.balance > 0 || f.kitzba > 0;
-  p.funds = t.funds.filter(held).map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba * 100) / 100, opened: f.opened, body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
+  /* יחס השיתוף נמדד מתחילת הוותק בקופה — ההצטרפות הראשונה — ולא ממועד
+     פתיחת התוכנית הנוכחית, שמתאפס בכל ניוד. */
+  const seniority = f => { const d = [f.firstJoined, f.opened].filter(x => parseDate(x)).sort()[0]; return d || f.opened; };
+  p.funds = t.funds.filter(held).map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba * 100) / 100, opened: seniority(f), body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
   p.balances = t.funds.filter(held).map(f => ({ name: f.plan, amount: Math.round(f.balance * 100) / 100, adjustment: f }));
   const prevExclude = new Map((p.capital || []).filter(c => c.adjustment).map(c => [`${c.adjustment.acct}|${c.adjustment.seq}`, !!c.exclude]));
   p.capital = t.capital.map(c => {
     let liquid = false;
     if (c.hishtalmut && brk) liquid = studyFundLiquidAt(c, brk);
     return { name: c.plan, kind: c.kind, taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
-             amount: Math.round(c.balance * 100) / 100, liquid, opened: c.opened, adjustment: c,
+             amount: Math.round(c.balance * 100) / 100, liquid, opened: seniority(c), adjustment: c,
              exclude: prevExclude.get(`${c.acct}|${c.seq}`) || false };
   });
 }
@@ -2650,8 +2653,16 @@ function render(){
         <td class="n">${pct}</td>
       </tr>`);
     }));
-    const hasStudy = people.some(([p, r]) => (r.capItems || []).some(c => !c.atRetire && !c.excluded && c.value > 0));
-    const capTitle = inactive.length ? (hasStudy ? "קרן השתלמות ופנסיה לא פעילה" : "פנסיה לא פעילה") : "קרן השתלמות וגמל להשקעה";
+    const counted = people.flatMap(([, r]) => (r.capItems || []).filter(c => !c.excluded && c.value > 0));
+    const kindOf = c => `${c.name || ""} ${c.kind || ""}`;
+    const hasStudy = counted.some(c => !c.atRetire && /השתלמות/.test(kindOf(c)));
+    const capKinds = [
+      hasStudy && "קרן השתלמות",
+      counted.some(c => !c.atRetire && /להשקעה/.test(kindOf(c))) && "גמל להשקעה",
+      counted.some(c => !c.atRetire && !/השתלמות|להשקעה/.test(kindOf(c))) && "קופות גמל",
+      inactive.length && "פנסיה לא פעילה",
+    ].filter(Boolean);
+    const capTitle = capKinds.length ? capKinds.slice(0, -1).join(", ") + (capKinds.length > 1 ? " ו" : "") + capKinds[capKinds.length - 1] : "קרן השתלמות וגמל להשקעה";
     const skippedAll = people.flatMap(([p]) => ((p.intake && p.intake.skipped) || []).filter(x => x.balance > 0));
     cgA = a.capGainsTax; cgB = b.capGainsTax;
     /* Totals are the marital portion of each side (net of tax × date ratio). */

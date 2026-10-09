@@ -405,6 +405,41 @@ test("a capital asset marked not-balanced is listed but left out of the totals",
   assert.equal(r.bMarital, 0);
 });
 
+test("transfer share runs from the first join date, not the current plan's opening", async (page) => {
+  const r = await page.evaluate(() => {
+    const p = state.people[0];
+    p.intake = {
+      rawFunds: [],
+      rawCapital: [
+        {
+          plan: "אקסלנס — קופת גמל",
+          kind: "קופת גמל",
+          acct: "1",
+          balance: 2758.49,
+          opened: "2011-11-30",
+          firstJoined: "2005-12-04",
+          asOf: "2025-12-31",
+          active: false,
+          deposits: [],
+        },
+      ],
+      skipped: [],
+      notes: [],
+      errors: [],
+    };
+    document.querySelector("#breakDate").value = "2024-12-08";
+    refreshMaslakaAdjustment(0);
+    const sh = transferShare(
+      parseDate("2007-03-22"),
+      parseDate("2024-12-08"),
+      parseDate(p.capital[0].opened),
+    );
+    return { opened: p.capital[0].opened, share: +(sh.share * 100).toFixed(2) };
+  });
+  assert.equal(r.opened, "2005-12-04");
+  assert.equal(r.share, 46.59, "as in the actuary's opinion for this fund");
+});
+
 test("salary month parsing covers PDF and XML formats", async (page) => {
   const r = await page.evaluate(() =>
     ["06/2025", "202506", "20250601", "062025", "2025-06", "6/25", "15/06/2025", "abc"].map((v) => {
