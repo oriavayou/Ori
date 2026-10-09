@@ -78,7 +78,7 @@ function AdminPage() {
           <div><p className="text-xs font-bold text-gold">סביבת ניהול</p><h1 className="mt-1 text-3xl font-bold">ניהול לקוחות</h1></div>
           <span className="grid size-11 place-items-center rounded-md bg-secondary text-primary"><Users className="size-5" /></span>
         </header>
-        <section className="space-y-5 rounded-lg border border-border bg-card p-6 shadow-lg shadow-primary/5">
+        <section className="space-y-5 rounded-lg border border-border bg-card p-6">
           <div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-md bg-primary text-primary-foreground"><Plus className="size-4" /></span><h2 className="text-xl font-bold">לקוח חדש</h2></div>
           <p className="text-sm text-muted-foreground">
             לאחר קבלת תשלום, צרו ללקוח מייל וסיסמה ושלחו לו אותם. כל לקוח יכול להפיק דוח אחד, ואז החשבון ננעל.
@@ -114,7 +114,7 @@ function AdminPage() {
           {msg && <p className="flex select-all items-center gap-2 rounded-md border border-border bg-secondary p-3 text-sm"><CheckCircle2 className="size-4 text-primary" />{msg}</p>}
         </section>
 
-        <section className="space-y-4 rounded-lg border border-border bg-card p-6 shadow-lg shadow-primary/5">
+        <section className="space-y-4 rounded-lg border border-border bg-card p-6">
           <h2 className="text-xl font-bold">לקוחות</h2>
           {list.isLoading ? (
             <p>טוען…</p>

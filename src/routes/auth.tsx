@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LockKeyhole } from "lucide-react";
 import logoAsset from "@/assets/maazan-logo.png.asset.json";
 
 const logoUrl = logoAsset.url;
@@ -47,21 +46,13 @@ function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-5 sm:p-8">
-      <div className="w-full max-w-xl overflow-hidden rounded-lg border border-border bg-card shadow-2xl shadow-primary/10">
-        <div className="flex justify-center bg-primary pt-7">
-          <div className="inline-flex items-center rounded-md bg-card p-2.5">
-            <img src={logoUrl} alt="מאזן ונגר" className="h-9 w-auto" />
-          </div>
-        </div>
-
-        <form onSubmit={submit} className="space-y-5 p-7 sm:p-10">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm">
+        <form onSubmit={submit} className="space-y-5">
           <div>
-            <span className="mb-4 grid size-10 place-items-center rounded-md bg-secondary text-primary">
-              <LockKeyhole className="size-5" />
-            </span>
-            <h1 className="text-2xl font-bold sm:text-3xl">כניסה למאזן</h1>
-            <p className="mt-2 text-sm text-muted-foreground">הכניסה למשתמשים מורשים בלבד.</p>
+            <img src={logoUrl} alt="מאזן ונגר" className="mb-6 h-8 w-auto" />
+            <h1 className="text-xl font-semibold">כניסה</h1>
+            <p className="mt-1 text-sm text-muted-foreground">למשתמשים מורשים בלבד.</p>
           </div>
           <div className="space-y-1">
             <Label htmlFor="email">מייל</Label>

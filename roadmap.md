@@ -29,3 +29,4 @@
 - [x] Both alternatives (פסיקתות / all cash) in the opinion and headline, as in the signed opinions
 - [x] "Not balanced by agreement" option for capital assets; section-47 duplicate deposits counted once
 - [x] Provident funds get a פסיקתא; investment provident and study funds are balanced in cash
+- [x] Minimal single-column design: no hero, footer or marketing text; one-line step guidance; case details up front, assumptions folded; unused balances section removed

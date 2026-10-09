@@ -37,28 +37,29 @@
 }
 
 :root {
+  /* אותו לוח מינימלי כמו המחשבון: לבן, אפור, צבע הדגשה אחד */
   --radius: 0.5rem;
-  --background: oklch(0.973 0.018 103);
-  --foreground: oklch(0.25 0.055 158);
-  --card: oklch(0.995 0.006 103);
-  --card-foreground: oklch(0.25 0.055 158);
-  --popover: oklch(0.995 0.006 103);
-  --popover-foreground: oklch(0.25 0.055 158);
-  --primary: oklch(0.34 0.09 158);
-  --primary-foreground: oklch(0.98 0.015 103);
-  --secondary: oklch(0.93 0.035 103);
-  --secondary-foreground: oklch(0.3 0.07 158);
-  --muted: oklch(0.94 0.025 103);
-  --muted-foreground: oklch(0.5 0.035 158);
-  --accent: oklch(0.72 0.105 82);
-  --accent-foreground: oklch(0.26 0.06 158);
-  --destructive: oklch(0.55 0.2 27);
-  --destructive-foreground: oklch(0.97 0.008 95);
-  --border: oklch(0.86 0.035 110);
-  --input: oklch(0.86 0.035 110);
-  --ring: oklch(0.72 0.105 82);
-  --gold: oklch(0.72 0.105 82);
-  --gold-foreground: oklch(0.25 0.055 158);
+  --background: #ffffff;
+  --foreground: #16181d;
+  --card: #ffffff;
+  --card-foreground: #16181d;
+  --popover: #ffffff;
+  --popover-foreground: #16181d;
+  --primary: #0f5d4c;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f3f5;
+  --secondary-foreground: #16181d;
+  --muted: #f2f3f5;
+  --muted-foreground: #6b7280;
+  --accent: #eaf3f0;
+  --accent-foreground: #0f5d4c;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #e3e5e8;
+  --input: #e3e5e8;
+  --ring: #0f5d4c;
+  --gold: #0f5d4c;
+  --gold-foreground: #ffffff;
 }
 
 @layer base {
