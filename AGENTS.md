@@ -20,3 +20,6 @@
 - Uploading reports of two different people to one side blocks the workflow; IDs are compared without leading zeros. Israeli ID check digits are validated before the report.
 - `tests/run.mjs` drives the real page in headless Chromium (`NODE_PATH="$(npm root -g)" node tests/run.mjs`); run it after any change to the calculator.
 - Amounts read from clearing-house reports keep their agorot (a monthly pension of 3,605.40 is not rounded to 3,605 — that moved a real case's discounted value by ₪40). Names read from reports are stored surname first, as in the signed opinions, because the opinion takes the personal name from the last word.
+- Deposit tables are attributed by their own header row (policy number, then managing company, product type, active status), because several funds of one person often share the ID as policy number. An attribution that stays ambiguous is not made.
+- A salary month that starts on or after the break date is post-break: with a break on the 1st, that whole month's deposits are deducted; with a mid-month break, the break month stays in the partnership.
+- A study fund is liquid at the break when its reported tax-benefit eligibility date is on or before the break; otherwise six years from the first join date (not the plan opening date, which resets on transfer).

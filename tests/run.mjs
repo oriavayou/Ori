@@ -244,6 +244,71 @@ test("break-date adjustment: deducts post-break salary months, ignores deposits 
   assert.ok(Math.abs(r.kitzba - Math.round(((4000 * 298000) / 300000) * 100) / 100) < 1e-9);
 });
 
+test("break on the 1st of a month: that month's salary is post-break", async (page) => {
+  const r = await page.evaluate(() => {
+    const deposits = [
+      { valueDate: "2025-04-10", salaryMonth: "03/2025", amount: 1000 } /* before — stays */,
+      {
+        valueDate: "2025-05-10",
+        salaryMonth: "04/2025",
+        amount: 1000,
+      } /* the break month, break on the 1st — deducted */,
+      { valueDate: "2025-06-10", salaryMonth: "05/2025", amount: 1000 } /* deducted */,
+      { valueDate: "2024-11-10", salaryMonth: "10/2024", amount: 1000 },
+    ];
+    return adjustFundToBreak(
+      { balance: 100000, kitzba: 1000, asOf: "2025-06-30", active: true, deposits },
+      parseDate("2025-04-01"),
+    ).deducted;
+  });
+  assert.equal(r, 2000);
+});
+
+test("deposit tables go to the fund named in their header when funds share a policy number", async (page) => {
+  const r = await page.evaluate(() => {
+    const funds = [
+      { acct: "38790572", body: "מנורה מבטחים פנסיה", kind: "קרן פנסיה משלימה", active: false },
+      { acct: "38790572", body: "מור גמל ופנסיה", kind: "קרן פנסיה מקיפה", active: true },
+      { acct: "79136245980", body: "אקסלנס", kind: "קרן השתלמות", active: true },
+    ];
+    const pick = (h) => {
+      const f = pickDepositTarget(funds, h);
+      return f ? f.body : null;
+    };
+    return [
+      pick("סוג המוצר :פנסיה חדשה מקיפה | שם חברה מנהלת :מור גמל ופנסיה | מספר פוליסה38790572 :"),
+      pick(
+        'סוג המוצר :פנסיה חדשה כללית | שם חברה מנהלת :מנורה מבטחים פנסיה וגמל בע"מ | מספר פוליסה38790572 :',
+      ),
+      pick("סוג המוצר :קרן השתלמות | שם חברה מנהלת :הפניקס | מספר פוליסה79136245980 :"),
+      pick("מספר פוליסה 11111111"),
+    ];
+  });
+  assert.deepEqual(r, ["מור גמל ופנסיה", "מנורה מבטחים פנסיה", "אקסלנס", null]);
+});
+
+test("study fund liquidity at the break: reported eligibility date, else six years from first join", async (page) => {
+  const r = await page.evaluate(() => {
+    const brk = parseDate("2025-04-01");
+    return [
+      studyFundLiquidAt(
+        { withdrawable: "31/03/2029", opened: "2023-12-12", firstJoined: "2023-03-31" },
+        brk,
+      ),
+      studyFundLiquidAt(
+        { withdrawable: "ניתן למשיכה", opened: "2023-12-12", firstJoined: "2017-01-01" },
+        brk,
+      ),
+      studyFundLiquidAt({ opened: "2023-12-12" }, brk),
+      studyFundLiquidAt(
+        { withdrawable: "ניתן למשיכה", opened: "2020-01-19", firstJoined: "2020-01-01" },
+        parseDate("2026-06-30"),
+      ),
+    ];
+  });
+  assert.deepEqual(r, [false, true, false, true]);
+});
+
 test("break-date adjustment blocks reports outside the six-month window", async (page) => {
   const r = await page.evaluate(() => [
     adjustFundToBreak(

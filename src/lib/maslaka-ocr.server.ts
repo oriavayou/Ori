@@ -15,10 +15,12 @@ const PRODUCT = {
     balance: nullable("number"),
     kitzba: nullable("number"),
     opened: { type: "string" },
+    firstJoined: { type: "string" },
+    withdrawable: { type: "string" },
     asOf: { type: "string" },
     nikuim: { type: "string" },
   },
-  required: ["section", "company", "productType", "policy", "status", "balance", "kitzba", "opened", "asOf", "nikuim"],
+  required: ["section", "company", "productType", "policy", "status", "balance", "kitzba", "opened", "firstJoined", "withdrawable", "asOf", "nikuim"],
 };
 
 const DEPOSIT = {
@@ -26,11 +28,12 @@ const DEPOSIT = {
   additionalProperties: false,
   properties: {
     policy: { type: "string" },
+    company: { type: "string" },
     valueDate: { type: "string" },
     salaryMonth: { type: "string" },
     amount: { type: "number" },
   },
-  required: ["policy", "valueDate", "salaryMonth", "amount"],
+  required: ["policy", "company", "valueDate", "salaryMonth", "amount"],
 };
 
 export const MASLAKA_SCHEMA = {
@@ -60,8 +63,8 @@ const PROMPT = `זהו דוח "ריכוז מוצרים פנסיונים" של ה
 - isMaslakaReport: true רק אם זה דוח המסלקה הפנסיונית.
 - firstName, lastName, id: מ"שם פרטי", "שם משפחה", "מס מזהה לקוח".
 - statedTotals: מהטבלה בעמוד הראשון "ריכוז סכומי הצבירה לפי סוגי המוצרים" — שם כל קטגוריה בדיוק כפי שכתוב (למשל "קרנות פנסיה חדשות") והסכום שמתחתיה.
-- products: לכל עמודת מוצר בטבלאות "פירוט המוצרים על פי סוג המוצר": section = כותרת הטבלה (למשל "קרנות פנסיה חדשות", "קרנות השתלמות", "קופות גמל", "ביטוח מנהלים"); company = שם חברה מנהלת; productType = סוג מוצר פנסיוני; policy = מספר פוליסה; status = סטטוס; balance = סה"כ חיסכון צבור; kitzba = "קיצבה חודשית לגיל פרישה ללא הפקדות כספים נוספות"; opened = תאריך פתיחת תכנית; asOf = תאריך נכונות נתונים; nikuim = מספר תיק ניכויים. תאריכים בפורמט DD/MM/YYYY כפי שכתוב. סכומים כמספר בלי ₪ ובלי פסיקים.
-- deposits: לכל שורה בטבלאות "פירוט הפקדות": policy = מספר הפוליסה שבכותרת אותו עמוד/טבלה; valueDate = תאריך ערך (DD/MM/YYYY); salaryMonth = חודש משכורת (MM/YYYY); amount = סכום כל רכיבי ההפקדה בשורה (עובד, מעסיק, פיצויים וכו׳), ללא "שכר חודשי מדווח".`;
+- products: לכל עמודת מוצר בטבלאות "פירוט המוצרים על פי סוג המוצר": section = כותרת הטבלה (למשל "קרנות פנסיה חדשות", "קרנות השתלמות", "קופות גמל", "ביטוח מנהלים"); company = שם חברה מנהלת; productType = סוג מוצר פנסיוני; policy = מספר פוליסה; status = סטטוס; balance = סה"כ חיסכון צבור; kitzba = "קיצבה חודשית לגיל פרישה ללא הפקדות כספים נוספות"; opened = תאריך פתיחת תכנית; firstJoined = תאריך הצטרפות לראשונה; withdrawable = "מועד זכאות למשיכה בהטבת מס" כפי שכתוב (תאריך או "ניתן למשיכה"); asOf = תאריך נכונות נתונים; nikuim = מספר תיק ניכויים. תאריכים בפורמט DD/MM/YYYY כפי שכתוב. סכומים כמספר בלי ₪ ובלי פסיקים.
+- deposits: לכל שורה בטבלאות "פירוט הפקדות": policy = מספר הפוליסה שבכותרת אותה טבלה; company = שם החברה המנהלת שבכותרת אותה טבלה; valueDate = תאריך ערך (DD/MM/YYYY); salaryMonth = חודש משכורת (MM/YYYY); amount = סכום כל רכיבי ההפקדה בשורה (עובד, מעסיק, פיצויים וכו׳), ללא "שכר חודשי מדווח".`;
 
 export async function readScannedMaslaka(pdfBase64: string, fileName: string) {
   const key = process.env["LOVABLE_API_KEY"];

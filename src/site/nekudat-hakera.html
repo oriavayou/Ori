@@ -1156,6 +1156,7 @@ function readMaslakaXml(xmlText, fileName){
         const opened = mYmd(mTxt(hesh, "TAARICH-HITZTARFUT-MUTZAR")) || mYmd(mTxt(hesh, "TAARICH-HITZTARFUT-RISHON"));
         const common = {
           body: bodyName, plan: label, acct, opened, balance,
+          firstJoined: mYmd(mTxt(hesh, "TAARICH-HITZTARFUT-RISHON")),
           asOf: asOf || mYmd(mTxt(hesh, "TAARICH-NECHONUT")),
           active: mTxt(hesh, "STATUS-POLISA-O-CHESHBON") === "1",
           deposits: xmlDeposits(hesh)
@@ -1313,6 +1314,7 @@ async function readScannedPdf(buffer, fileName, fallback){
     const common = {
       body: body_, plan: kind || section, acct: String(p.policy || "").replace(/\D/g, "").replace(/^0+/, ""),
       opened: pdfDate(p.opened), balance: num(p.balance) || 0, asOf: pdfDate(p.asOf),
+      firstJoined: pdfDate(p.firstJoined), withdrawable: norm(p.withdrawable),
       active: /^פעיל/.test(norm(p.status)), nikuim: String(p.nikuim || "").replace(/\D/g, "")
     };
     if (isPension && /מקיפה|כללית|משלימה/.test(kind) && !/ותיק/.test(kind)){
@@ -1331,10 +1333,10 @@ async function readScannedPdf(buffer, fileName, fallback){
   /* הפקדות — רק לחשבון שמספרו תואם בדיוק */
   for (const d of (r.deposits || [])){
     const acct = String(d.policy || "").replace(/\D/g, "").replace(/^0+/, "");
-    const matching = [...out.funds, ...out.capital].filter(f => f.acct && f.acct === acct);
     const amount = num(d.amount);
-    if (matching.length !== 1 || !(amount > 0)) continue;
-    (matching[0].deposits || (matching[0].deposits = [])).push({
+    const target = acct && pickDepositTarget([...out.funds, ...out.capital].filter(f => f.acct === acct), `${acct} ${norm(d.company)}`);
+    if (!target || !(amount > 0)) continue;
+    (target.deposits || (target.deposits = [])).push({
       valueDate: pdfDate(d.valueDate), salaryMonth: norm(d.salaryMonth), amount: Math.round(amount * 100) / 100, source: "PDF סרוק"
     });
   }
@@ -1361,6 +1363,20 @@ async function readScannedPdf(buffer, fileName, fallback){
   seqTag(out.funds, "fund"); seqTag(out.capital, "capital"); seqTag(out.skipped, "skip");
   if (!out.funds.length && !out.capital.length && !out.skipped.length) out.error = "לא נמצאו חשבונות בקובץ";
   return out;
+}
+
+/* שיוך כותרת של טבלת הפקדות לקופה: לפי מספר הפוליסה, ואם כמה קופות
+   חולקות אותו מספר — לפי שם החברה המנהלת שבכותרת, ואז לפי סוג המוצר,
+   ואז רק קופה פעילה (ההפקדות מפורטות לחשבונות הפעילים). שיוך שנשאר דו־משמעי
+   לא נעשה — עדיף לחסום מלנחש. */
+function pickDepositTarget(all, header){
+  const h = norm(header).replace(/["״׳']/g, "");
+  const bare = v => norm(v).replace(/["״׳']/g, "");
+  let c = all.filter(f => f.acct && h.indexOf(f.acct) !== -1);
+  if (c.length > 1){ const byBody = c.filter(f => f.body && h.indexOf(bare(f.body)) !== -1); if (byBody.length) c = byBody; }
+  if (c.length > 1){ const byKind = c.filter(f => /כללית|משלימה/.test(h) ? /משלימה/.test(f.kind || "") : /מקיפה/.test(h) ? /מקיפה/.test(f.kind || "") : true); if (byKind.length) c = byKind; }
+  if (c.length > 1){ const act = c.filter(f => f.active); if (act.length) c = act; }
+  return c.length === 1 ? c[0] : null;
 }
 
 /* קריאת PDF: קודם קריאה ישירה של הטקסט בדפדפן (מהירה וללא עלות).
@@ -1515,6 +1531,8 @@ async function readMaslakaPdfText(buffer, fileName){
       const bal     = col('סה"כ חיסכון צבור');
       const kitz    = col("קיצבה חודשית לגיל פרישה ללא הפקדות כספים נוספות");
       const opened  = col("תאריך פתיחת תכנית");
+      const joined  = col("תאריך הצטרפות לראשונה");
+      const withdraw = col("מועד זכאות למשיכה בהטבת מס");
       const asOf    = col("תאריך נכונות נתונים");
       const nikuim  = col("מספר תיק ניכויים");
 
@@ -1526,6 +1544,8 @@ async function readMaslakaPdfText(buffer, fileName){
         const common = {
           body: body_, plan: kind || section, acct,
           opened: pdfDate(opened[k]),
+          firstJoined: pdfDate(joined[k]),
+          withdrawable: norm(withdraw[k]),
           balance: pdfNum(bal[k]) || 0,
           asOf: pdfDate(asOf[k]),
           active: /^פעיל/.test(status[k] || ""),
@@ -1558,16 +1578,20 @@ async function readMaslakaPdfText(buffer, fileName){
   }
 
   /* ---- פירוט הפקדות ----
-     בכל עמוד פירוט מופיעים מספר הפוליסה בכותרת, תאריך הערך בקצה
-     הימני, חודש השכר לידו, וכל רכיבי ההפקדה משמאל. שכר מדווח אינו
-     הפקדה ולכן אינו נכלל. השיוך נעשה רק למספר חשבון חד־משמעי. */
-  for (const pageRows of allRows){
-    const pageText = pageRows.map(r => r.text).join(" ");
-    if (!pageText.includes("תאריך ערך") && !pageText.includes("פירוט הפקדות")) continue;
-    const matching = [...out.funds, ...out.capital].filter(f => f.acct && pageText.includes(f.acct));
-    if (matching.length !== 1) continue;
-    const deposits = matching[0].deposits || (matching[0].deposits = []);
-    for (const row of pageRows){
+     כל טבלת הפקדות נפתחת בשורת כותרת: סוג המוצר, שם החברה המנהלת ומספר
+     הפוליסה. השורות שאחריה שייכות לאותה קופה עד הכותרת הבאה. בכל שורה
+     תאריך הערך בקצה הימני, חודש השכר לידו, וכל רכיבי ההפקדה משמאל; שכר
+     מדווח אינו הפקדה ולכן אינו נכלל. לכמה קופות יכול להיות אותו מספר
+     פוליסה (מספר ת.ז.), ואז הקופה נבחרת לפי שם החברה שבכותרת. */
+  {
+    let inDeposits = false, target = null;
+    for (const row of flat){
+      const t = row.text;
+      if (t.indexOf("פירוט הפקדות") !== -1){ inDeposits = true; target = null; continue; }
+      if (!inDeposits) continue;
+      if (/פירוט התוכניות|ביטוח למקרה מוות/.test(t)){ inDeposits = false; target = null; continue; }
+      if (t.indexOf("מספר פוליסה") !== -1){ target = pickDepositTarget([...out.funds, ...out.capital], t); continue; }
+      if (!target) continue;
       const dateItem = row.items.find(it => /^\d{2}\/\d{2}\/\d{4}$/.test(norm(it.str)));
       if (!dateItem) continue;
       const monthItem = row.items.find(it => /^\d{2}\/\d{4}$/.test(norm(it.str)));
@@ -1576,7 +1600,7 @@ async function readMaslakaPdfText(buffer, fileName){
         .sort((a, b) => b.x - a.x);
       // העמודה הימנית ביותר אחרי חודש השכר היא "שכר חודשי מדווח" — אינה הפקדה
       const amount = values.slice(1).reduce((sum, it) => sum + (pdfNum(it.str) || 0), 0);
-      if (amount > 0) deposits.push({ valueDate: pdfDate(dateItem.str), salaryMonth: monthItem ? norm(monthItem.str) : "", amount: Math.round(amount * 100) / 100, source: "PDF" });
+      if (amount > 0) (target.deposits || (target.deposits = [])).push({ valueDate: pdfDate(dateItem.str), salaryMonth: monthItem ? norm(monthItem.str) : "", amount: Math.round(amount * 100) / 100, source: "PDF" });
     }
   }
 
@@ -1756,13 +1780,14 @@ function adjustFundToBreak(f, breakDate){
   // הפקדה נחשבת "אחרי הקרע" לפי חודש השכר, לא לפי תאריך הערך:
   // הפקדה על משכורת חודש הקרע עצמו שייכת לתקופה המשותפת גם אם שולמה אחריו.
   const salaryMonthStart = d => parseSalaryMonth(d.salaryMonth);
-  const breakMonthStart = new Date(Date.UTC(breakDate.getUTCFullYear(), breakDate.getUTCMonth(), 1));
   const after = dated.filter(d => {
     const dt = parseDate(d.valueDate);
     /* הפקדה שנכנסה אחרי תאריך נכונות היתרה אינה כלולה ביתרה — אין מה לקזז */
     if (dt > asOf) return false;
     const sm = salaryMonthStart(d);
-    if (sm) return sm > breakMonthStart;
+    /* חודש שכר שמתחיל במועד הקרע או אחריו — אחרי הקרע. קרע ב־1 בחודש: שכר
+       אותו חודש כולו אחרי הקרע; קרע באמצע החודש: שכר חודש הקרע נשאר בשותפות. */
+    if (sm) return sm >= breakDate;
     return dt > breakDate;
   });
   const deducted = Math.round(after.reduce((sum, d) => sum + d.amount, 0) * 100) / 100;
@@ -1784,10 +1809,7 @@ function refreshMaslakaAdjustment(i){
   p.balances = t.funds.map(f => ({ name: f.plan, amount: Math.round(f.balance * 100) / 100, adjustment: f }));
   p.capital = t.capital.map(c => {
     let liquid = false;
-    if (c.hishtalmut && c.opened && brk){
-      const six = parseDate(c.opened);
-      if (six){ six.setUTCFullYear(six.getUTCFullYear() + 6); liquid = six <= brk; }
-    }
+    if (c.hishtalmut && brk) liquid = studyFundLiquidAt(c, brk);
     return { name: c.plan, kind: c.kind, taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
              amount: Math.round(c.balance * 100) / 100, liquid, opened: c.opened, adjustment: c };
   });
@@ -1807,6 +1829,17 @@ function plausibilityNotes(m){
       notes.push(`${label}: תאריך הפתיחה מאוחר מתאריך נכונות הנתונים. כדאי לבדוק מול הדוח.`);
   }
   return notes;
+}
+/* האם קרן ההשתלמות הייתה נזילה (פטורה ממס) במועד הקרע. עדיף תאריך הזכאות
+   שהגוף המוסדי מדווח; אחרת שש שנים מההצטרפות הראשונה — לא ממועד פתיחת
+   התוכנית, שמתאפס בכל ניוד. "ניתן למשיכה" מתאר את מועד הדוח, לא את הקרע. */
+function studyFundLiquidAt(c, brk){
+  const eligible = parseDate(pdfDate(c.withdrawable || "")) || parseDate(c.withdrawable);
+  if (eligible) return eligible <= brk;
+  const starts = [parseDate(c.firstJoined), parseDate(c.opened)].filter(Boolean).sort((a, b) => a - b);
+  if (!starts.length) return false;
+  const six = new Date(starts[0].getTime()); six.setUTCFullYear(six.getUTCFullYear() + 6);
+  return six <= brk;
 }
 function applyMaslaka(i, m){
   const p = state.people[i];
@@ -2626,7 +2659,7 @@ function render(){
             <td class="n">${fund.originalKitzba ? ils.format(fund.kitzba) : "—"}</td>
           </tr>`).join("")}</tbody>
         </table>
-        <p class="doc-note">מקור ההתאמה: פירוט ההפקדות בפועל בדוח המסלקה. נגרעו מן היתרה ההפקדות בגין חודשי שכר שלאחר חודש הקרע (ובהיעדר חודש שכר — הפקדות שתאריך הערך שלהן לאחר מועד הקרע), שנכנסו עד תאריך נכונות הדוח; הפקדה על שכר חודש הקרע עצמו נותרה בתקופה המשותפת. הקצבה הותאמה באותו יחס שבין היתרה המתוקנת ליתרה המדווחת.</p>` : ""}
+        <p class="doc-note">מקור ההתאמה: פירוט ההפקדות בפועל בדוח המסלקה. נגרעו מן היתרה ההפקדות בגין חודשי שכר שמתחילים במועד הקרע או אחריו (ובהיעדר חודש שכר — הפקדות שתאריך הערך שלהן לאחר מועד הקרע), שנכנסו עד תאריך נכונות הדוח; כשהקרע חל באמצע חודש, הפקדה על שכר חודש הקרע נותרה בתקופה המשותפת. הקצבה הותאמה באותו יחס שבין היתרה המתוקנת ליתרה המדווחת.</p>` : ""}
       </div>
 
       ${cards.map((card, cardIndex) => `<div class="doc-block">
