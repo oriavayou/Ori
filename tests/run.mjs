@@ -309,7 +309,7 @@ test("study fund liquidity at the break: reported eligibility date, else six yea
   assert.deepEqual(r, [false, true, false, true]);
 });
 
-test("break-date adjustment blocks reports outside the six-month window", async (page) => {
+test("break-date adjustment blocks a report before the break or one with nothing to estimate from", async (page) => {
   const r = await page.evaluate(() => [
     adjustFundToBreak(
       { balance: 1, kitzba: 1, asOf: "2025-05-31", deposits: [] },
@@ -325,6 +325,84 @@ test("break-date adjustment blocks reports outside the six-month window", async 
     ).adjustmentStatus,
   ]);
   assert.deepEqual(r, ["blocked", "blocked", "ok"]);
+});
+
+test("report long after the break: listed deposits deducted, earlier months estimated, transfers kept", async (page) => {
+  const r = await page.evaluate(() => {
+    const deposits = [];
+    for (let k = 0; k < 12; k++) {
+      /* salary months 05/2025 … 04/2026, 4,000 each, paid the next month */
+      const m = new Date(Date.UTC(2025, 4 + k, 1)),
+        v = new Date(Date.UTC(2025, 5 + k, 10));
+      deposits.push({
+        salaryMonth: `${String(m.getUTCMonth() + 1).padStart(2, "0")}/${m.getUTCFullYear()}`,
+        valueDate: v.toISOString().slice(0, 10),
+        amount: 4000,
+        salary: 20000,
+      });
+    }
+    deposits.push({
+      salaryMonth: "07/2025",
+      valueDate: "2025-07-06",
+      amount: 72000,
+      salary: 0,
+    }); /* transfer-in */
+    const f = adjustFundToBreak(
+      { balance: 600000, kitzba: 6000, asOf: "2026-05-31", active: true, deposits },
+      parseDate("2025-04-01"),
+    );
+    return {
+      status: f.adjustmentStatus,
+      deducted: f.deducted,
+      actual: f.deductedActual,
+      months: f.estimatedMonths,
+      transfers: f.transfers.length,
+      kitzba: f.kitzba,
+    };
+  });
+  assert.equal(r.status, "estimated");
+  assert.equal(r.actual, 48000, "12 listed post-break months");
+  assert.deepEqual(
+    r.months,
+    ["04/2025"],
+    "the break month (break on the 1st) precedes the listing",
+  );
+  assert.equal(r.deducted, 52000);
+  assert.equal(r.transfers, 1);
+  assert.equal(r.kitzba, Math.round(((6000 * 548000) / 600000) * 100) / 100);
+});
+
+test("a capital asset marked not-balanced is listed but left out of the totals", async (page) => {
+  const r = await page.evaluate(() => {
+    const run = (exclude) =>
+      computePerson(
+        {
+          birth: "1980-05-10",
+          gender: "male",
+          funds: [],
+          capital: [
+            { name: "קרן השתלמות", amount: 100000, opened: "2020-01-01", liquid: true, exclude },
+          ],
+        },
+        0.03,
+        parseDate("2025-06-30"),
+        null,
+        0.35,
+        parseDate("2010-01-01"),
+      );
+    const a = run(false),
+      b = run(true);
+    return {
+      a: a.capitalShare,
+      b: b.capitalShare,
+      bItem: b.capItems[0].excluded,
+      bMarital: b.capItems[0].marital,
+    };
+  });
+  assert.equal(r.a, 50000);
+  assert.equal(r.b, 0);
+  assert.equal(r.bItem, true);
+  assert.equal(r.bMarital, 0);
 });
 
 test("salary month parsing covers PDF and XML formats", async (page) => {
@@ -490,6 +568,8 @@ test("full wizard: XML upload, manual spouse, report bottom line equals headline
   assert.match(out.text, /ספטמבר 2025/, "sources line uses the report month");
   assert.doesNotMatch(out.text, /יוני 2026/);
   assert.match(out.text, /הנחת תוחלת חיים/);
+  assert.match(out.text, /חלופה א׳/, "both alternatives, as in the signed opinions");
+  assert.match(out.text, /חלופה ב׳/);
 });
 
 test("rights only for side B: B's breakdown is shown", async (page) => {

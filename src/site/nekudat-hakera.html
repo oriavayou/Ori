@@ -916,18 +916,21 @@ function computePerson(p, rate, breakDate, otherMortality, taxRate, marriage){
     const value = capVal(b);
     const tax = taxOf(b, value);
     const sh = transferShare(marriage, breakDate, parseDate(b.opened));
-    return Object.assign({}, b, { value, tax, sh, taxable: tax > 0, taxOnGain: tax > 0 && gainOf(b) != null,
-      marital: (value - tax) * sh.share * 2, due: (value - tax) * sh.share });
+    /* נכס שהצדדים הסכימו שלא לאזן — מוצג בדוח, אך אינו נכנס לחישוב */
+    const k = b.exclude ? 0 : 1;
+    return Object.assign({}, b, { value, tax, sh, taxable: tax > 0, taxOnGain: tax > 0 && gainOf(b) != null, excluded: !!b.exclude,
+      marital: (value - tax) * sh.share * 2 * k, due: (value - tax) * sh.share * k });
   });
-  const capital = capItems.reduce((t, b) => t + b.value, 0);
-  const capGainsTax = capItems.reduce((t, b) => t + b.tax, 0);
+  const counted = capItems.filter(b => !b.excluded);
+  const capital = counted.reduce((t, b) => t + b.value, 0);
+  const capGainsTax = counted.reduce((t, b) => t + b.tax, 0);
   return Object.assign(out, {
     valid: true, retire: ret, death, months: n, monthsEarly: nEarly, years: yrs,
     retiredAtBreak: ret <= breakDate,
     monthly, atRetire, atBreak, atBreakEarly, transfer, transferEarly,
     balances, capital, capGainsTax, capItems,
     capitalNet: capital - capGainsTax,
-    capitalShare: capItems.reduce((t, b) => t + b.due, 0),
+    capitalShare: counted.reduce((t, b) => t + b.due, 0),
     balancesShare: balances * (1 - taxRate) * 0.5,
     /* The three approaches, each a complete way of valuing the same rights:
        1 — the balance taken now, less tax, split in half
@@ -1584,14 +1587,22 @@ async function readMaslakaPdfText(buffer, fileName){
      מדווח אינו הפקדה ולכן אינו נכלל. לכמה קופות יכול להיות אותו מספר
      פוליסה (מספר ת.ז.), ואז הקופה נבחרת לפי שם החברה שבכותרת. */
   {
-    let inDeposits = false, target = null;
+    let inDeposits = false, target = null, cols = null;
     for (const row of flat){
       const t = row.text;
       if (t.indexOf("פירוט הפקדות") !== -1){ inDeposits = true; target = null; continue; }
       if (!inDeposits) continue;
       if (/פירוט התוכניות|ביטוח למקרה מוות/.test(t)){ inDeposits = false; target = null; continue; }
-      if (t.indexOf("מספר פוליסה") !== -1){ target = pickDepositTarget([...out.funds, ...out.capital], t); continue; }
+      if (t.indexOf("מספר פוליסה") !== -1){ target = pickDepositTarget([...out.funds, ...out.capital], t); cols = null; continue; }
       if (!target) continue;
+      /* שורת כותרות העמודות: מיקום "הפקדות עובד" ו"תגמולים 47-שכיר".
+         הגוף המוסדי רושם הפקדה לפי סעיף 47 גם בעמודת העובד וגם בעמודת 47
+         באותו סכום — זו אותה הפקדה, ונספרת פעם אחת. */
+      if (t.indexOf("הפקדות עובד") !== -1){
+        const at = re => { const it = row.items.find(i => re.test(norm(i.str))); return it ? pdfCx(it) : null; };
+        cols = { emp: at(/הפקדות עובד/), s47: at(/47/) };
+        continue;
+      }
       const dateItem = row.items.find(it => /^\d{2}\/\d{2}\/\d{4}$/.test(norm(it.str)));
       if (!dateItem) continue;
       const monthItem = row.items.find(it => /^\d{2}\/\d{4}$/.test(norm(it.str)));
@@ -1599,8 +1610,15 @@ async function readMaslakaPdfText(buffer, fileName){
         .filter(it => it.x < (monthItem ? monthItem.x : dateItem.x) - 5 && /^-?[\d,]+(?:\.\d+)?$/.test(norm(it.str)))
         .sort((a, b) => b.x - a.x);
       // העמודה הימנית ביותר אחרי חודש השכר היא "שכר חודשי מדווח" — אינה הפקדה
-      const amount = values.slice(1).reduce((sum, it) => sum + (pdfNum(it.str) || 0), 0);
-      if (amount > 0) (target.deposits || (target.deposits = [])).push({ valueDate: pdfDate(dateItem.str), salaryMonth: monthItem ? norm(monthItem.str) : "", amount: Math.round(amount * 100) / 100, source: "PDF" });
+      let amount = values.slice(1).reduce((sum, it) => sum + (pdfNum(it.str) || 0), 0);
+      if (cols && cols.emp != null && cols.s47 != null){
+        const near = (x, tol) => values.slice(1).filter(it => Math.abs(pdfCx(it) - x) <= tol).sort((p, q) => Math.abs(pdfCx(p) - x) - Math.abs(pdfCx(q) - x))[0];
+        const e = near(cols.emp, 25), s47 = near(cols.s47, 30);
+        const ve = e ? pdfNum(e.str) : 0, v47 = s47 ? pdfNum(s47.str) : 0;
+        if (e && s47 && e !== s47 && ve > 0 && Math.abs(ve - v47) < 0.005) amount -= v47;
+      }
+      const salary = values.length ? pdfNum(values[0].str) : null;
+      if (amount > 0) (target.deposits || (target.deposits = [])).push({ valueDate: pdfDate(dateItem.str), salaryMonth: monthItem ? norm(monthItem.str) : "", amount: Math.round(amount * 100) / 100, salary, source: "PDF" });
     }
   }
 
@@ -1758,44 +1776,86 @@ function parseSalaryMonth(v){
   if ((m = s.match(/(\d{1,2})[\/.\-](\d{2,4})(?!\d)/))){ let y = +m[2]; if (y < 100) y += 2000; return ok(y, +m[1]); }
   return null;
 }
+/* חציון — לא מושפע מהפקדה חריגה אחת (תיקון, השלמה רטרואקטיבית) */
+function median(xs){
+  const v = xs.filter(x => isFinite(x)).sort((p, q) => p - q);
+  if (!v.length) return 0;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+const monthKey = d => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
+/* התאמת יתרה וקצבה למועד הקרע — כמו בחוות הדעת של יפתח:
+   1. נגרעות ההפקדות בפועל בגין חודשי שכר שמתחילים במועד הקרע או אחריו
+      ושנכנסו עד תאריך נכונות הדוח.
+   2. חודשי שכר שאחרי הקרע שקודמים לתחילת פירוט ההפקדות בדוח (הדוח מפרט
+      רק את החודשים האחרונים) — מוערכים לפי ההפקדה החודשית החציונית, והדוח
+      אומר זאת במפורש. חודש שחסר בתוך התקופה המפורטת — לא הופקד, ואינו מוערך.
+   3. העברת כספים (ניוד) — שורה ללא שכר מדווח בסכום חריג — אינה הפקדה על
+      עבודה שאחרי הקרע ואינה נגרעת; היא מצוינת בדוח. */
 function adjustFundToBreak(f, breakDate){
   const asOf = parseDate(f.asOf);
-  const base = Object.assign({}, f, { originalBalance: f.balance, originalKitzba: f.kitzba, deducted: 0, adjustmentStatus: "ok", adjustmentMessage: "" });
+  const base = Object.assign({}, f, { originalBalance: f.balance, originalKitzba: f.kitzba, deducted: 0, deductedActual: 0,
+    estimatedMonths: [], estimatedMonthly: 0, transfers: [], adjustmentStatus: "ok", adjustmentMessage: "" });
   if (!breakDate){ base.adjustmentStatus = "pending"; base.adjustmentMessage = "יש למלא את מועד הקרע כדי לבדוק את הדוח"; return base; }
   if (!asOf){ base.adjustmentStatus = "blocked"; base.adjustmentMessage = "תאריך נכונות הנתונים חסר; נדרש דוח תקופתי מחברת הביטוח"; return base; }
   if (asOf < breakDate){ base.adjustmentStatus = "blocked"; base.adjustmentMessage = `הדוח מוקדם ממועד הקרע (מועד הקרע ${fmtD(breakDate)}, הדוח נכון ל־${fmtD(asOf)}); נדרש דוח מעודכן המכסה את מועד הקרע`; return base; }
-  if (asOf > addCalendarMonths(breakDate, 6)){ base.adjustmentStatus = "blocked"; base.adjustmentMessage = `הדוח רחוק ביותר משישה חודשים ממועד הקרע (מועד הקרע ${fmtD(breakDate)}, הדוח נכון ל־${fmtD(asOf)}); נדרש דוח תקופתי מחברת הביטוח`; return base; }
   if (asOf.getTime() === breakDate.getTime()){ base.adjustmentMessage = "הדוח נכון למועד הקרע — לא נדרש קיזוז"; return base; }
   const deposits = Array.isArray(f.deposits) ? f.deposits : [];
   // קופה שהגוף המוסדי מדווח עליה כ"לא פעילה" ואין בה הפקדות — אין מה לקזז.
   if (f.active === false && !deposits.length){ base.adjustmentMessage = "קופה לא פעילה ללא הפקדות — לא נדרש קיזוז"; return base; }
+
   const dated = deposits.filter(d => parseDate(d.valueDate));
-  const earliestValue = dated.map(d => parseDate(d.valueDate)).filter(Boolean).sort((a,b) => a-b)[0];
-  const coverageStart = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth() - 6, 1));
-  if (!dated.length || !earliestValue || earliestValue > coverageStart){
-    base.adjustmentStatus = "blocked";
-    base.adjustmentMessage = "אין בדוח פירוט הפקדות מלא המכסה את התקופה ממועד הקרע; נדרש דוח תקופתי מחברת הביטוח";
-    return base;
+  /* ניוד: שכר מדווח 0, סכום של עשרות אלפים ופי חמישה לפחות מהפקדה רגילה */
+  const typical = median(dated.map(d => d.amount));
+  const isTransfer = d => d.salary === 0 && d.amount >= 10000 && d.amount > 5 * typical;
+  base.transfers = dated.filter(isTransfer);
+  const regular = dated.filter(d => !isTransfer(d));
+
+  /* חודש שכר שמתחיל במועד הקרע או אחריו — אחרי הקרע. קרע ב־1 בחודש: שכר
+     אותו חודש כולו אחרי הקרע; קרע באמצע החודש: שכר חודש הקרע נשאר בשותפות. */
+  const isPost = d => { const sm = parseSalaryMonth(d.salaryMonth); return sm ? sm >= breakDate : parseDate(d.valueDate) > breakDate; };
+  /* הפקדה שנכנסה אחרי תאריך נכונות היתרה אינה כלולה ביתרה — אין מה לקזז */
+  const after = regular.filter(d => parseDate(d.valueDate) <= asOf && isPost(d));
+  const actual = Math.round(after.reduce((sum, d) => sum + d.amount, 0) * 100) / 100;
+
+  /* חודשי השכר שאחרי הקרע שההפקדה בגינם כבר ביתרה: ההפקדה נכנסת בחודש
+     שאחרי חודש השכר, ולכן עד החודש שלפני תאריך נכונות הדוח. */
+  const firstPost = breakDate.getUTCDate() === 1 ? monthStart(breakDate) : utcDate(breakDate.getUTCFullYear(), breakDate.getUTCMonth() + 1, 1);
+  const lastInBalance = utcDate(asOf.getUTCFullYear(), asOf.getUTCMonth() - 1, 1);
+  const listedMonths = regular.map(d => parseSalaryMonth(d.salaryMonth)).filter(Boolean).sort((p, q) => p - q);
+  const firstListed = listedMonths[0] || (regular.length ? monthStart(regular.map(d => parseDate(d.valueDate)).sort((p, q) => p - q)[0]) : null);
+  const missing = [];
+  for (let m = firstPost; m <= lastInBalance && (!firstListed || m < firstListed); m = utcDate(m.getUTCFullYear(), m.getUTCMonth() + 1, 1)) missing.push(m);
+
+  let estimate = 0;
+  if (missing.length){
+    if (f.active === false && !regular.length){ /* קופה לא פעילה — אין הפקדות להעריך */ missing.length = 0; }
+    else {
+      const perMonth = new Map();
+      for (const d of regular){ const sm = parseSalaryMonth(d.salaryMonth); const k = sm ? monthKey(sm) : monthKey(parseDate(d.valueDate)); perMonth.set(k, (perMonth.get(k) || 0) + d.amount); }
+      const monthly = Math.round(median([...perMonth.values()]) * 100) / 100;
+      if (!(monthly > 0)){
+        base.adjustmentStatus = "blocked";
+        base.adjustmentMessage = "אין בדוח פירוט הפקדות שממנו אפשר לקזז את התקופה שממועד הקרע; נדרש דוח תקופתי מחברת הביטוח";
+        return base;
+      }
+      base.estimatedMonthly = monthly;
+      estimate = Math.round(monthly * missing.length * 100) / 100;
+    }
   }
-  // הפקדה נחשבת "אחרי הקרע" לפי חודש השכר, לא לפי תאריך הערך:
-  // הפקדה על משכורת חודש הקרע עצמו שייכת לתקופה המשותפת גם אם שולמה אחריו.
-  const salaryMonthStart = d => parseSalaryMonth(d.salaryMonth);
-  const after = dated.filter(d => {
-    const dt = parseDate(d.valueDate);
-    /* הפקדה שנכנסה אחרי תאריך נכונות היתרה אינה כלולה ביתרה — אין מה לקזז */
-    if (dt > asOf) return false;
-    const sm = salaryMonthStart(d);
-    /* חודש שכר שמתחיל במועד הקרע או אחריו — אחרי הקרע. קרע ב־1 בחודש: שכר
-       אותו חודש כולו אחרי הקרע; קרע באמצע החודש: שכר חודש הקרע נשאר בשותפות. */
-    if (sm) return sm >= breakDate;
-    return dt > breakDate;
-  });
-  const deducted = Math.round(after.reduce((sum, d) => sum + d.amount, 0) * 100) / 100;
+  base.estimatedMonths = missing.map(m => `${String(m.getUTCMonth() + 1).padStart(2, "0")}/${m.getUTCFullYear()}`);
+  const deducted = Math.round((actual + estimate) * 100) / 100;
   if (deducted > f.balance){ base.adjustmentStatus = "blocked"; base.adjustmentMessage = "סכום ההפקדות המאוחרות גדול מהיתרה המדווחת; נדרש דוח תקופתי מחברת הביטוח"; return base; }
   base.deducted = deducted;
+  base.deductedActual = actual;
   base.balance = Math.round((f.balance - deducted) * 100) / 100;
-  base.kitzba = f.balance > 0 ? Math.round((f.kitzba * base.balance / f.balance) * 100) / 100 : f.kitzba;
-  base.adjustmentMessage = deducted > 0 ? `קוזזו הפקדות בפועל בסך ${ils.format(deducted)}` : "לא נמצאו הפקדות לאחר מועד הקרע";
+  if (typeof f.kitzba === "number" && f.balance > 0) base.kitzba = Math.round((f.kitzba * base.balance / f.balance) * 100) / 100;
+  const parts = [];
+  if (actual > 0) parts.push(`קוזזו הפקדות בפועל בסך ${ils.format(actual)}`);
+  if (estimate > 0){ base.adjustmentStatus = "estimated"; parts.push(`וקיזוז מוערך של ${missing.length} ${missing.length === 1 ? "חודש" : "חודשים"} (${base.estimatedMonths.join(", ")}) לפי הפקדה חודשית של ${ils.format(base.estimatedMonthly)}`); }
+  if (base.transfers.length) parts.push(`ניוד של ${ils.format(base.transfers.reduce((t, d) => t + d.amount, 0))} לא קוזז`);
+  base.adjustmentMessage = parts.length ? parts.join("; ") : "לא נמצאו הפקדות לאחר מועד הקרע";
   return base;
 }
 function refreshMaslakaAdjustment(i){
@@ -1805,13 +1865,16 @@ function refreshMaslakaAdjustment(i){
   t.funds = t.rawFunds.map(f => adjustFundToBreak(f, brk));
   t.capital = (t.rawCapital || []).map(c => adjustFundToBreak(c, brk));
   t.blocked = !!t.mixed || [...t.funds, ...t.capital].some(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending");
-  p.funds = t.funds.map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba * 100) / 100, opened: f.opened, body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
-  p.balances = t.funds.map(f => ({ name: f.plan, amount: Math.round(f.balance * 100) / 100, adjustment: f }));
+  const held = f => f.balance > 0 || f.kitzba > 0;
+  p.funds = t.funds.filter(held).map(f => ({ name: f.plan, acct: f.acct, amount: Math.round(f.kitzba * 100) / 100, opened: f.opened, body: f.body, nikuim: f.nikuim || "", gilPrisha: f.gilPrisha || 0, adjustment: f }));
+  p.balances = t.funds.filter(held).map(f => ({ name: f.plan, amount: Math.round(f.balance * 100) / 100, adjustment: f }));
+  const prevExclude = new Map((p.capital || []).filter(c => c.adjustment).map(c => [`${c.adjustment.acct}|${c.adjustment.seq}`, !!c.exclude]));
   p.capital = t.capital.map(c => {
     let liquid = false;
     if (c.hishtalmut && brk) liquid = studyFundLiquidAt(c, brk);
     return { name: c.plan, kind: c.kind, taxable: /השתלמות|להשקעה/.test(String(c.kind || "") + " " + String(c.plan || "")),
-             amount: Math.round(c.balance * 100) / 100, liquid, opened: c.opened, adjustment: c };
+             amount: Math.round(c.balance * 100) / 100, liquid, opened: c.opened, adjustment: c,
+             exclude: prevExclude.get(`${c.acct}|${c.seq}`) || false };
   });
 }
 /* בדיקות סבירות על מה שנקרא — לא פוסלות, אבל מסמנות מה לבדוק מול הדוח.
@@ -1918,7 +1981,8 @@ function renderIntake(){
         <h4>${escapeAttr(p.name || "ללא שם")}</h4>
         <p class="d-hint">${t.fileCount} קבצים נקראו · ${t.funds.length} קרנות פנסיה${(t.capital || []).length ? ` · ${t.capital.length} נכסים הוניים` : ""} נכנסו לתחשיב${t.skipped.length ? ` · ${t.skipped.length} דורשים טיפול` : ""}</p>
         ${(t.notes || []).map(n => `<div class="need-more">${escapeAttr(n)}</div>`).join("")}
-        ${t.blocked && !t.mixed ? `<div class="contact-note"><strong>לא ניתן להמשיך עם הדוח הזה.</strong> ${escapeAttr(([...t.funds, ...(t.capital || [])].find(f => f.adjustmentStatus !== "ok") || {}).adjustmentMessage || "נדרשת בדיקה של נתוני ההפקדות")}</div>` : ""}
+        ${t.blocked && !t.mixed ? `<div class="contact-note"><strong>לא ניתן להמשיך עם הדוח הזה.</strong> ${escapeAttr(([...t.funds, ...(t.capital || [])].find(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending") || {}).adjustmentMessage || "נדרשת בדיקה של נתוני ההפקדות")}</div>` : ""}
+        ${[...t.funds, ...(t.capital || [])].some(f => f.adjustmentStatus === "estimated") ? `<div class="need-more">הדוח נכון למועד מאוחר ממועד הקרע ופירוט ההפקדות בו אינו מכסה את כל התקופה. חודשים שלא פורטו קוזזו בהערכה לפי ההפקדה החודשית — כך זה ייכתב בדוח. לדיוק מלא אפשר להשיג דוח תקופתי נכון למועד הקרע.</div>` : ""}
         ${t.funds.length && (!p.birth || !p.gender) ? `
         <div class="need-more">דוח ה־PDF אינו כולל תאריך לידה ומין. השלימו אותם בטופס שלמטה —
           בלעדיהם אין גיל פרישה ואין תוחלת חיים, ולכן אין היוון.</div>` : ""}
@@ -2056,6 +2120,8 @@ function renderPeople(){
               קרן השתלמות שניתן כבר לפדות — פטורה ממס</label>
             <label class="liq"><input type="checkbox" data-p="${i}" data-c="${j}" data-k="atRetire"${b.atRetire ? " checked" : ""}>
               פנסיה לא פעילה — סכום חד־פעמי שיתקבל בגיל פרישה (יהוון למועד הקרע)</label>
+            <label class="liq"><input type="checkbox" data-p="${i}" data-c="${j}" data-k="exclude"${b.exclude ? " checked" : ""}>
+              לא לאזן נכס זה — לפי הסכמת הצדדים (יצוין בדוח)</label>
           </div>`).join("")}
         <button class="add-fund" data-addcap="${i}">הוספת נכס הוני</button>
         <div class="fund-meta">מס 25% מחושב רק על קרן השתלמות שטרם הגיעה למועד הנזילות או על קופת גמל להשקעה — מהרווח החייב אם הוזן, ואחרת מהיתרה כולה. נכס אחר נכנס ללא מס.</div>
@@ -2103,7 +2169,7 @@ function validPersonStep(i){
   const noRights = state.rightsHolder === "a" ? i === 1 : state.rightsHolder === "b" ? i === 0 : false;
   if (noRights) return "";
   if (p.intake && p.intake.mixed) return "הקבצים שהועלו לצד זה שייכים ליותר מאדם אחד — יש להחליף את הדוח";
-  if (p.intake && p.intake.blocked) return ([...(p.intake.funds || []), ...(p.intake.capital || [])].find(f => f.adjustmentStatus !== "ok") || {}).adjustmentMessage || "דוח המסלקה אינו מתאים למועד הקרע";
+  if (p.intake && p.intake.blocked) return ([...(p.intake.funds || []), ...(p.intake.capital || [])].find(f => f.adjustmentStatus === "blocked" || f.adjustmentStatus === "pending") || {}).adjustmentMessage || "דוח המסלקה אינו מתאים למועד הקרע";
   const funds = (p.funds || []).filter(f => String(f.name || "").trim() || Number(f.amount) > 0 || f.opened);
   const balances = (p.balances || []).filter(b => String(b.name || "").trim() || Number(b.amount) > 0);
   const capitals = (p.capital || []).filter(c => String(c.name || "").trim() || Number(c.amount) > 0);
@@ -2342,10 +2408,9 @@ function render(){
       <div class="t-value num">${missing.length || !isFinite(net) ? "—" : ils.format(net)}</div>
       <div class="t-sub">${missing.length ? "חסרים תאריך לידה ומין" : dir(net, payer)}</div>
     </div>`;
-  const hasCapital = people.some(([, r]) => (r.capItems || []).some(c => c.value > 0));
-  const tiles = tile("סכום האיזון הכולל", "פנסיה מהוונת ונכסים הוניים, בקיזוז הדדי", bal.totalNet, bal.totalPayer, true)
-    + tile("פנסיה — היוון עד המועד המוקדם", "התשלומים נספרים עד המועד המוקדם מבין תוחלות החיים", bal.penNet, bal.penPayer, false)
-    + (hasCapital ? tile("נכסים הוניים", "מחצית ההפרש בין חלקי הצדדים, אחרי מס", bal.capNet, bal.capPayer, false) : "")
+  const tiles = tile("חלופה ב׳ — הכול במזומן", "פנסיה מהוונת ונכסים הוניים, בקיזוז הדדי", bal.totalNet, bal.totalPayer, true)
+    + tile("חלופה א׳ — פסיקתות", "הפנסיה מועברת בפסיקתא; במזומן רק הנכסים ההוניים", bal.capNet, bal.capPayer, false)
+    + tile("מזה: פנסיה מהוונת", "היוון עד המועד המוקדם מבין תוחלות החיים", bal.penNet, bal.penPayer, false)
     + (missing.length ? `<div class="need-more" style="grid-column:1/-1">
         כדי לחשב יש להשלים תאריך לידה ומין עבור ${escapeAttr(missing.join(" ו־"))}.
         הם קובעים את גיל הפרישה ואת תוחלת החיים, ודוח PDF של המסלקה אינו כולל אותם.</div>` : "")
@@ -2508,7 +2573,7 @@ function render(){
     const licenses = v("expLicenses").split("\n").map(x => x.trim()).filter(Boolean);
     const A0 = state.people[0], B0 = p2;
     const adjustedFunds = state.people.flatMap(p => ([...((p.intake && p.intake.funds) || []), ...((p.intake && p.intake.capital) || [])])
-      .filter(f => f.adjustmentStatus === "ok")
+      .filter(f => f.adjustmentStatus === "ok" || f.adjustmentStatus === "estimated")
       .map(f => ({ owner: p.name, fund: f })));
 
     const assumptions = [
@@ -2561,10 +2626,12 @@ function render(){
        subtotals each side, takes the difference and halves it. */
     const capRows = [];
     const inactive = [];
+    const notBalanced = [];
     let cgA = 0, cgB = 0;
     people.forEach(([p, r]) => (r.capItems || []).forEach(c => {
       const amt = c.value || 0;
       if (!(amt > 0)) return;
+      if (c.excluded){ notBalanced.push({ p, c }); return; }
       const pct = `${(c.sh.share * 100).toFixed(2)}%`;
       if (c.atRetire){
         inactive.push({ p, r, c });
@@ -2583,7 +2650,7 @@ function render(){
         <td class="n">${pct}</td>
       </tr>`);
     }));
-    const hasStudy = people.some(([p, r]) => (r.capItems || []).some(c => !c.atRetire && c.value > 0));
+    const hasStudy = people.some(([p, r]) => (r.capItems || []).some(c => !c.atRetire && !c.excluded && c.value > 0));
     const capTitle = inactive.length ? (hasStudy ? "קרן השתלמות ופנסיה לא פעילה" : "פנסיה לא פעילה") : "קרן השתלמות וגמל להשקעה";
     const skippedAll = people.flatMap(([p]) => ((p.intake && p.intake.skipped) || []).filter(x => x.balance > 0));
     cgA = a.capGainsTax; cgB = b.capGainsTax;
@@ -2619,9 +2686,10 @@ function render(){
         <p>לכבוד: ${escapeAttr(court || "להשלים")}${judge ? " — " + escapeAttr(judge) : ""}</p>
         <p>באמצעות דוא״ל</p>
         <p>בהתאם לבקשת הצדדים ובאי כוחם, רצ״ב חוות דעתי לאיזון משאבי חיסכון פנסיוני וגמל.</p>
-        <p>חוות הדעת מציגה חלופה אחת לאיזון זכויות הצדדים:</p>
+        <p>חוות הדעת כוללת שתי חלופות לאיזון זכויות הצדדים:</p>
         <ul class="doc-list">
-          <li><strong>החלופה המוצגת:</strong> חישוב הערך המהוון של הזכויות הפנסיוניות עד המועד המוקדם מבין תוחלות החיים של בני הזוג, בתוספת שיערוך יתר הנכסים.</li>
+          <li><strong>חלופה א׳:</strong> פסיקתות לחתימת כבוד בית המשפט לאיזון הזכויות לפי חוק לחלוקת חיסכון פנסיוני בין בני זוג שנפרדו, התשע״ד–2014. זכויות שאינן תחת תוקפו של החוק — קרנות השתלמות וגמל להשקעה — מחושבות בנפרד.</li>
+          <li><strong>חלופה ב׳:</strong> חישוב הערך המהוון של הזכויות הפנסיוניות עד המועד המוקדם מבין תוחלות החיים של בני הזוג, בתוספת שיערוך יתר הנכסים.</li>
         </ul>
         <div class="doc-sign">בכבוד רב,<br><strong>${escapeAttr(expName)}</strong><br>${escapeAttr(v("expTitle"))}</div>
       </div>
@@ -2659,7 +2727,9 @@ function render(){
             <td class="n">${fund.originalKitzba ? ils.format(fund.kitzba) : "—"}</td>
           </tr>`).join("")}</tbody>
         </table>
-        <p class="doc-note">מקור ההתאמה: פירוט ההפקדות בפועל בדוח המסלקה. נגרעו מן היתרה ההפקדות בגין חודשי שכר שמתחילים במועד הקרע או אחריו (ובהיעדר חודש שכר — הפקדות שתאריך הערך שלהן לאחר מועד הקרע), שנכנסו עד תאריך נכונות הדוח; כשהקרע חל באמצע חודש, הפקדה על שכר חודש הקרע נותרה בתקופה המשותפת. הקצבה הותאמה באותו יחס שבין היתרה המתוקנת ליתרה המדווחת.</p>` : ""}
+        <p class="doc-note">מקור ההתאמה: פירוט ההפקדות בפועל בדוח המסלקה. נגרעו מן היתרה ההפקדות בגין חודשי שכר שמתחילים במועד הקרע או אחריו (ובהיעדר חודש שכר — הפקדות שתאריך הערך שלהן לאחר מועד הקרע), שנכנסו עד תאריך נכונות הדוח; כשהקרע חל באמצע חודש, הפקדה על שכר חודש הקרע נותרה בתקופה המשותפת. הקצבה הותאמה באותו יחס שבין היתרה המתוקנת ליתרה המדווחת.</p>
+        ${adjustedFunds.filter(({ fund }) => fund.estimatedMonths && fund.estimatedMonths.length).map(({ owner, fund }) => `<p class="doc-note">${escapeAttr(owner)} — ${escapeAttr(fund.plan)}: הדוח נכון ל־${dateFmt(parseDate(fund.asOf))} ופירוט ההפקדות בו אינו כולל את ${fund.estimatedMonths.length === 1 ? "חודש השכר" : "חודשי השכר"} ${fund.estimatedMonths.join(", ")}. ההפקדות בגינם הוערכו לפי ההפקדה החודשית החציונית בדוח, ${ils.format(fund.estimatedMonthly)} לחודש, ובסך ${ils.format(fund.deducted - fund.deductedActual)}.</p>`).join("")}
+        ${adjustedFunds.filter(({ fund }) => fund.transfers && fund.transfers.length).map(({ owner, fund }) => `<p class="doc-note">${escapeAttr(owner)} — ${escapeAttr(fund.plan)}: ${fund.transfers.map(d => `העברה בסך ${ils.format(d.amount)} בתאריך ${dateFmt(parseDate(d.valueDate))}`).join("; ")} — ללא שכר מדווח ובסכום חריג, ולכן נראית כניוד כספים ולא כהפקדה בגין עבודה לאחר הקרע; לא נגרעה מן היתרה. יש לוודא את מקורה.</p>`).join("")}` : ""}
       </div>
 
       ${cards.map((card, cardIndex) => `<div class="doc-block">
@@ -2688,7 +2758,7 @@ function render(){
           </tr></thead>
           <tbody>
             ${rows.join("")}
-            <tr class="sum"><td colspan="5">סה״כ ${escapeAttr(first(penPayer))} ${payVerb(penPayer)} ל${escapeAttr(first(penPayee))}</td>
+            <tr class="sum"><td colspan="5">סה״כ ${escapeAttr(first(penPayer))} ${payVerb(penPayer)} ל${escapeAttr(first(penPayee))} בחלופה ב׳</td>
               <td class="n">${ils.format(penNet)}</td></tr>
           </tbody>
         </table>
@@ -2724,9 +2794,9 @@ function render(){
         <ul class="doc-list">
           ${(() => {
             if (!hasStudy) return "";
-            const locked = people.flatMap(([p, r]) => (r.capItems || []).filter(c => c.tax > 0 && /השתלמות/.test(String(c.name || "") + " " + String(c.kind || ""))).map(c => ({ p, c })));
+            const locked = people.flatMap(([p, r]) => (r.capItems || []).filter(c => c.tax > 0 && !c.excluded && /השתלמות/.test(String(c.name || "") + " " + String(c.kind || ""))).map(c => ({ p, c })));
             return locked.length
-              ? `<li>${locked.map(({ p, c }) => `${escapeAttr(c.name || "קרן השתלמות")} של ${escapeAttr(p.name)}`).join("; ")} — טרם הגיעה למועד הנזילות (שש שנים ממועד הפתיחה), ולכן הובאה בחשבון בניכוי מס. ככל שהצדדים יעדיפו, ניתן לשקול קיזוז בתשלומים או שערוך למועד הנזילות.</li>`
+              ? `<li>${locked.map(({ p, c }) => `${escapeAttr(c.name || "קרן השתלמות")} של ${escapeAttr(p.name)}`).join("; ")} — טרם הגיעה במועד הקרע למועד הזכאות למשיכה בהטבת מס, ולכן הובאה בחשבון בניכוי מס. ככל שהצדדים יעדיפו, ניתן לשקול קיזוז בתשלומים או שערוך למועד הנזילות.</li>`
               : `<li>קרנות השתלמות, לפי מידע שנמסר לי, נזילות וזמינות למשיכה. ככל שקרן ההשתלמות אינה נזילה, יש לשקול קיזוז בתשלומים או שערוך למועד הנזילות.</li>`;
           })()}
           ${inactive.map(({ r, c }) => {
@@ -2736,7 +2806,7 @@ function render(){
           }).join("")}
           ${inactive.length ? `<li>משיכה הונית של כספי הפנסיה הלא פעילה חייבת במס. ניתן לבצע פריסת מס על פני עד שש שנות מס בהתאם לסעיף 8(ג) לפקודת מס הכנסה, ושיעור המס בפועל תלוי בהכנסות ובמדרגות המס של ${inactive[0].p.gender === "female" ? "המושכת" : "המושך"}. התחשיב לעיל הוא לפני מס.</li>` : ""}
           <li>${(() => {
-            const items = people.flatMap(([, r]) => (r.capItems || []).filter(c => c.tax > 0));
+            const items = people.flatMap(([, r]) => (r.capItems || []).filter(c => c.tax > 0 && !c.excluded));
             if (!items.length) return "בתיק זה לא נוכה מס רווחי הון: אין נכס הוני החייב במס במועד הקרע (קרן השתלמות שטרם הגיעה למועד הנזילות או גמל להשקעה).";
             const onGain = items.filter(c => c.taxOnGain).length;
             return onGain === items.length
@@ -2745,6 +2815,7 @@ function render(){
                 ? "עבור קרן השתלמות שאינה נזילה וגמל להשקעה נוכה מס רווחי הון של 25%: מן הרווח החייב במס בנכסים שבהם הוזן, ומן היתרה כולה בנכסים שבהם לא הוזן רווח."
                 : "עבור קרן השתלמות שאינה נזילה וגמל להשקעה נוכה מס רווחי הון של 25% מן היתרה כולה, בהיעדר נתון על הרווח הריאלי. ככל שיומצא אישור על הרווח החייב, ניתן לחשב את המס על הרווח בלבד.";
           })()}</li>
+          ${notBalanced.map(({ p, c }) => `<li>${escapeAttr(p.name)} — ${escapeAttr(c.name || "נכס")} (${ils.format(c.value)}) לא אוזן, לפי הסכמת הצדדים.</li>`).join("")}
           ${skippedAll.map(x => `<li>${escapeAttr(x.plan || x.kind || "מוצר")}${x.acct ? " " + escapeAttr(x.acct) : ""} (${ils2.format(x.balance)}) לא נכלל — ${escapeAttr(x.why || "דורש טיפול ידני")}.</li>`).join("")}
         </ul>
       </div>
@@ -2752,17 +2823,19 @@ function render(){
       <div class="doc-block">
         <h4>3.6 לסיכום.</h4>
         <table class="doc-tbl">
-          <thead><tr><th>תיאור סעיף</th><th>האיזון המוצע</th></tr></thead>
+          <thead><tr><th>תיאור סעיף</th><th>חלופה א׳</th><th>חלופה ב׳</th></tr></thead>
           <tbody>
-            <tr><td>פנסיה פעילה — ${escapeAttr(first(penPayer))} ל${escapeAttr(first(penPayee))}</td><td class="n">${ils.format(penNet)}</td></tr>
-            <tr><td>${capTitle} — ${escapeAttr(first(capPayer))} ל${escapeAttr(first(capPayee))}</td>
-                <td class="n">${ils.format(capNet)}</td></tr>
-            <tr class="sum"><td>נטו לתשלום — ${escapeAttr(nm(altBpayer))} ל${escapeAttr(nm(altBpayee))}</td>
-              <td class="n">${ils.format(altBnet)}</td></tr>
+            <tr><td>פנסיה פעילה${penNet > 0.5 ? ` — ${escapeAttr(first(penPayer))} ל${escapeAttr(first(penPayee))}` : ""}</td><td>איזון באמצעות פסיקתא</td><td class="n">${ils.format(penNet)}</td></tr>
+            <tr><td>${capTitle}${capNet > 0.5 ? ` — ${escapeAttr(first(capPayer))} ל${escapeAttr(first(capPayee))}` : ""}</td>
+                <td class="n">${ils.format(capNet)}</td><td class="n">${ils.format(capNet)}</td></tr>
+            <tr class="sum"><td>נטו לתשלום</td>
+              <td class="n">${capNet > 0.5 ? `${escapeAttr(first(capPayer))} ל${escapeAttr(first(capPayee))}: ` : ""}${ils.format(capNet)}</td>
+              <td class="n">${altBnet > 0.5 ? `${escapeAttr(first(altBpayer))} ל${escapeAttr(first(altBpayee))}: ` : ""}${ils.format(altBnet)}</td></tr>
           </tbody>
         </table>
         <ul class="doc-list">
-          <li>לפי החלופה המוצגת, ${escapeAttr(nm(altBpayer))} ${payVerb(altBpayer)} ל${escapeAttr(nm(altBpayee))} סך כולל של ${ils.format(altBnet)}.</li>
+          <li>בחלופה א׳ ייחתמו הפסיקתות שבפרק 2, הזכויות בפנסיה יועברו ישירות מהגוף המשלם לפי השיעור הנקוב${capNet > 0.5 ? `, ובנוסף ${escapeAttr(nm(capPayer))} ${payVerb(capPayer)} ל${escapeAttr(nm(capPayee))} ${ils.format(capNet)} בגין ${capTitle}` : ""}.</li>
+          <li>בחלופה ב׳ לא תיכתב פסיקתא, ו${escapeAttr(nm(altBpayer))} ${payVerb(altBpayer)} ל${escapeAttr(nm(altBpayee))} סך כולל של ${ils.format(altBnet)}.</li>
           ${noPension ? `<li>ל${escapeAttr(noPension)} אין זכויות פנסיוניות, ולפיכך ההעברה חד־כיוונית ואין קיזוז הדדי.</li>` : `<li>הסכומים מחושבים בקיזוז הדדי בין זכויות הצדדים.</li>`}
         </ul>
         <h3>פרק 5 — הנתונים ששימשו אותי בתחשיב</h3>
@@ -3161,7 +3234,7 @@ function handleField(t){
   } else if (t.dataset.c != null){
     const f = p.capital[+t.dataset.c];
     f[t.dataset.k] = t.dataset.k === "amount" ? (Number(t.value) || 0)
-                   : (t.dataset.k === "liquid" || t.dataset.k === "atRetire") ? t.checked : t.value;
+                   : (t.dataset.k === "liquid" || t.dataset.k === "atRetire" || t.dataset.k === "exclude") ? t.checked : t.value;
   } else {
     p[t.dataset.k] = t.value;
   }

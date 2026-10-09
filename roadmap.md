@@ -25,3 +25,6 @@
 - [x] Block mixed-person uploads; Israeli ID check digit; date sanity checks; plausibility notes on read pensions
 - [x] Report sources month taken from the actual reports; fixed side-B-only mode; Rubik font for Hebrew
 - [x] Browser test suite for calculations, XML reading and the full wizard
+- [x] Adjust reports dated long after the break as the signed opinions do: deduct listed deposits, estimate unlisted months, keep transfers-in, disclose all
+- [x] Both alternatives (פסיקתות / all cash) in the opinion and headline, as in the signed opinions
+- [x] "Not balanced by agreement" option for capital assets; section-47 duplicate deposits counted once
