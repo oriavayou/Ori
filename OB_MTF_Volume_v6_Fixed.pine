@@ -1,20 +1,22 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6 Fixed]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.1 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
+// v6.1
+// - Works on ANY chart timeframe. Detection always runs on fixed 30m / 15m /
+//   10m / 5m data:
+//     * a timeframe >= chart timeframe is read with request.security() using
+//       the previous CONFIRMED bar (no repaint),
+//     * a timeframe < chart timeframe is read from all intrabars with
+//       request.security_lower_tf().
+//   The MTF distance tolerance always uses the 30m ATR, so zones are identical
+//   on 1m, 5m, 30m, 1H, 4H...
+// - A zone is deleted from the chart as soon as price touches it.
+//
 // v6 fixes over v5:
-// 1. FVG is now measured correctly: the impulse candle is bar [1] and the gap is
-//    confirmed by bar [0] (low[0] > high[2]). v5 required the impulse candle
-//    itself to gap over the candle two bars back, which almost never happens on a
-//    single impulse candle, so most OBs were never detected.
-// 2. All ta.* calls are made on every bar. Pine v6 evaluates `and` lazily, so
-//    ta.highest()/ta.lowest() inside an `and` chain were computed on a broken
-//    history and the break-of-structure test returned wrong values.
-// 3. One box per 30m OB (no stacked duplicates). A weak-volume box is upgraded
-//    in place when a strong-volume 15m confirmation appears later.
-// 4. Default transparencies are visible on mobile (v5 used 94-98%, which made
-//    weak, touched and stopped zones practically invisible).
-// 5. Optional debug mode draws every raw 30m / 15m OB that was detected.
-// 6. Alerts fire only when a NEW zone is drawn, not on every bar.
+// - FVG measured correctly: impulse candle = bar [1], gap confirmed by bar [0].
+// - All ta.* calls run on every bar (Pine v6 evaluates `and` lazily).
+// - One box per 30m OB (no stacked duplicates), upgraded in place on strong volume.
+// - Debug mode, and alerts only when a NEW zone is drawn.
 
 // -----------------------------------------------------------------------------
 // Inputs
@@ -51,8 +53,6 @@ int maxZones = input.int(40, "Maximum zones to keep", minval=1, maxval=150, grou
 int maxRecordsPerTF = input.int(80, "Maximum OB records per timeframe", minval=10, maxval=250, group=GROUP_DRAW)
 int strongOpacity = input.int(70, "Strong-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 int weakOpacity = input.int(86, "Weak-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
-int touchedOpacity = input.int(90, "Touched box transparency", minval=0, maxval=100, group=GROUP_DRAW)
-int stoppedOpacity = input.int(94, "Invalidated box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 bool showStatus = input.bool(true, "Show diagnostic status panel", group=GROUP_DRAW)
 
 string GROUP_DEBUG = "Debug"
@@ -122,6 +122,12 @@ f_scanOB() =>
         outVol := volumePass
     [srcTime, impulseTime, srcBottom, srcTop, outDir, outVol]
 
+// Previous confirmed bar of the scanner, for request.security() with lookahead_on
+// (the standard non-repainting higher-timeframe pattern).
+f_scanConfirmed() =>
+    [sT, sI, sB, sP, sD, sV] = f_scanOB()
+    [sT[1], sI[1], sB[1], sP[1], sD[1], sV[1]]
+
 // -----------------------------------------------------------------------------
 // Storage helpers
 // -----------------------------------------------------------------------------
@@ -155,6 +161,33 @@ f_addRecord(array<int> times, array<int> impulseTimes, array<float> bottoms, arr
                 array.shift(touched)
                 array.shift(broken)
     added
+
+f_rawBox(array<box> store, int srcTime, int impulseTime, float bottom, float top, int direction, int tfSeconds, string tfText, string lineStyle) =>
+    color base = direction == 1 ? color.teal : color.red
+    box bx = box.new(left=srcTime, top=top, right=impulseTime + 20 * tfSeconds * 1000, bottom=bottom, xloc=xloc.bar_time,
+         bgcolor=color.new(base, 100), border_color=color.new(base, 30), border_width=1, border_style=lineStyle,
+         text=tfText, text_color=color.new(base, 20), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
+    array.push(store, bx)
+    while array.size(store) > 120
+        box.delete(array.shift(store))
+
+// Push every OB event found in one timeframe's array into its record store.
+f_ingest(array<int> times, array<int> impulseTimes, array<float> bottoms, array<float> tops,
+         array<int> directions, array<bool> volumePasses, array<bool> touched, array<bool> broken,
+         array<int> tArr, array<int> iArr, array<float> bArr, array<float> pArr, array<int> dArr, array<bool> vArr,
+         int maxRecords, bool drawRaw, array<box> rawStore, int tfSeconds, string tfText, string lineStyle) =>
+    int addedCount = 0
+    if array.size(tArr) > 0
+        for i = 0 to array.size(tArr) - 1
+            int srcT = array.get(tArr, i)
+            if not na(srcT)
+                bool added = f_addRecord(times, impulseTimes, bottoms, tops, directions, volumePasses, touched, broken,
+                     srcT, array.get(iArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), array.get(vArr, i), maxRecords)
+                if added
+                    addedCount += 1
+                    if drawRaw
+                        f_rawBox(rawStore, srcT, array.get(iArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), tfSeconds, tfText, lineStyle)
+    addedCount
 
 f_updateRecords(array<int> impulseTimes, array<float> bottoms, array<float> tops,
                 array<int> directions, array<bool> touched, array<bool> broken,
@@ -193,7 +226,7 @@ f_countUsable(array<int> impulseTimes, array<bool> touched, array<bool> broken, 
     count
 
 f_near(float lowA, float highA, float lowB, float highB, float tolerance) =>
-    bool valid = not na(lowA) and not na(highA) and not na(lowB) and not na(highB)
+    bool valid = not na(lowA) and not na(highA) and not na(lowB) and not na(highB) and not na(tolerance)
     float gap = valid ? math.max(0.0, math.max(lowA, lowB) - math.min(highA, highB)) : na
     valid and gap <= tolerance
 
@@ -213,23 +246,30 @@ f_indexOf(array<string> ids, string id) =>
                 idx := i
     idx
 
-f_rawBox(array<box> store, int srcTime, int impulseTime, float bottom, float top, int direction, int tfSeconds, string tfText, string lineStyle) =>
-    color base = direction == 1 ? color.teal : color.red
-    box bx = box.new(left=srcTime, top=top, right=impulseTime + 20 * tfSeconds * 1000, bottom=bottom, xloc=xloc.bar_time,
-         bgcolor=color.new(base, 100), border_color=color.new(base, 30), border_width=1, border_style=lineStyle,
-         text=tfText, text_color=color.new(base, 20), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
-    array.push(store, bx)
-    while array.size(store) > 120
-        box.delete(array.shift(store))
+// -----------------------------------------------------------------------------
+// Fetch 30m / 15m / 10m / 5m OB events on ANY chart timeframe.
+// TF >= chart TF -> request.security (confirmed bar, no repaint)
+// TF <  chart TF -> request.security_lower_tf (every intrabar)
+// -----------------------------------------------------------------------------
+int chartSec = timeframe.in_seconds()
+bool htf30 = chartSec <= 1800
+bool htf15 = chartSec <= 900
+bool htf10 = chartSec <= 600
+bool htf5 = chartSec <= 300
 
-// -----------------------------------------------------------------------------
-// Collect 30m state directly and ALL 15m / 10m / 5m intrabars.
-// Keep this indicator on a 30-minute chart so these are all lower TF arrays.
-// -----------------------------------------------------------------------------
-[time30State, impulse30State, bottom30State, top30State, dir30State, vol30State] = f_scanOB()
-[t15Arr, imp15Arr, bot15Arr, top15Arr, dir15Arr, vol15Arr] = request.security_lower_tf(syminfo.tickerid, "15", f_scanOB(), ignore_invalid_timeframe=true)
-[t10Arr, imp10Arr, bot10Arr, top10Arr, dir10Arr, vol10Arr] = request.security_lower_tf(syminfo.tickerid, "10", f_scanOB(), ignore_invalid_timeframe=true)
-[t5Arr, imp5Arr, bot5Arr, top5Arr, dir5Arr, vol5Arr] = request.security_lower_tf(syminfo.tickerid, "5", f_scanOB(), ignore_invalid_timeframe=true)
+[h30t, h30i, h30b, h30p, h30d, h30v] = request.security(syminfo.tickerid, "30", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[h15t, h15i, h15b, h15p, h15d, h15v] = request.security(syminfo.tickerid, "15", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[h10t, h10i, h10b, h10p, h10d, h10v] = request.security(syminfo.tickerid, "10", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[h5t, h5i, h5b, h5p, h5d, h5v] = request.security(syminfo.tickerid, "5", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+
+[l30t, l30i, l30b, l30p, l30d, l30v] = request.security_lower_tf(syminfo.tickerid, "30", f_scanOB(), ignore_invalid_timeframe=true)
+[l15t, l15i, l15b, l15p, l15d, l15v] = request.security_lower_tf(syminfo.tickerid, "15", f_scanOB(), ignore_invalid_timeframe=true)
+[l10t, l10i, l10b, l10p, l10d, l10v] = request.security_lower_tf(syminfo.tickerid, "10", f_scanOB(), ignore_invalid_timeframe=true)
+[l5t, l5i, l5b, l5p, l5d, l5v] = request.security_lower_tf(syminfo.tickerid, "5", f_scanOB(), ignore_invalid_timeframe=true)
+
+// 30m ATR on every chart timeframe, so the confluence tolerance never changes.
+float atr30 = request.security(syminfo.tickerid, "30", ta.atr(14)[1], lookahead=barmerge.lookahead_on)
+float allowedGap = atr30 * nearATR
 
 var array<int> times30 = array.new<int>()
 var array<int> impulses30 = array.new<int>()
@@ -271,38 +311,37 @@ var array<box> rawBoxes = array.new<box>()
 var int total30 = 0
 var int total15 = 0
 
-if not na(time30State)
-    bool added30 = f_addRecord(times30, impulses30, bottoms30, tops30, directions30, volumes30, touched30, broken30,
-         time30State, impulse30State, bottom30State, top30State, dir30State, vol30State, maxRecordsPerTF)
-    if added30
-        total30 += 1
-        if showRaw30
-            f_rawBox(rawBoxes, time30State, impulse30State, bottom30State, top30State, dir30State, 1800, "30m", line.style_dashed)
+if htf30
+    total30 += f_ingest(times30, impulses30, bottoms30, tops30, directions30, volumes30, touched30, broken30,
+         array.from(h30t), array.from(h30i), array.from(h30b), array.from(h30p), array.from(h30d), array.from(h30v),
+         maxRecordsPerTF, showRaw30, rawBoxes, 1800, "30m", line.style_dashed)
+else
+    total30 += f_ingest(times30, impulses30, bottoms30, tops30, directions30, volumes30, touched30, broken30,
+         l30t, l30i, l30b, l30p, l30d, l30v, maxRecordsPerTF, showRaw30, rawBoxes, 1800, "30m", line.style_dashed)
 
-if array.size(t15Arr) > 0
-    for i = 0 to array.size(t15Arr) - 1
-        int srcT = array.get(t15Arr, i)
-        if not na(srcT)
-            bool added15 = f_addRecord(times15, impulses15, bottoms15, tops15, directions15, volumes15, touched15, broken15,
-                 srcT, array.get(imp15Arr, i), array.get(bot15Arr, i), array.get(top15Arr, i), array.get(dir15Arr, i), array.get(vol15Arr, i), maxRecordsPerTF)
-            if added15
-                total15 += 1
-                if showRaw15
-                    f_rawBox(rawBoxes, srcT, array.get(imp15Arr, i), array.get(bot15Arr, i), array.get(top15Arr, i), array.get(dir15Arr, i), 900, "15m", line.style_dotted)
+if htf15
+    total15 += f_ingest(times15, impulses15, bottoms15, tops15, directions15, volumes15, touched15, broken15,
+         array.from(h15t), array.from(h15i), array.from(h15b), array.from(h15p), array.from(h15d), array.from(h15v),
+         maxRecordsPerTF, showRaw15, rawBoxes, 900, "15m", line.style_dotted)
+else
+    total15 += f_ingest(times15, impulses15, bottoms15, tops15, directions15, volumes15, touched15, broken15,
+         l15t, l15i, l15b, l15p, l15d, l15v, maxRecordsPerTF, showRaw15, rawBoxes, 900, "15m", line.style_dotted)
 
-if array.size(t10Arr) > 0
-    for i = 0 to array.size(t10Arr) - 1
-        int srcT = array.get(t10Arr, i)
-        if not na(srcT)
-            f_addRecord(times10, impulses10, bottoms10, tops10, directions10, volumes10, touched10, broken10,
-                 srcT, array.get(imp10Arr, i), array.get(bot10Arr, i), array.get(top10Arr, i), array.get(dir10Arr, i), array.get(vol10Arr, i), maxRecordsPerTF)
+if htf10
+    f_ingest(times10, impulses10, bottoms10, tops10, directions10, volumes10, touched10, broken10,
+         array.from(h10t), array.from(h10i), array.from(h10b), array.from(h10p), array.from(h10d), array.from(h10v),
+         maxRecordsPerTF, false, rawBoxes, 600, "10m", line.style_dotted)
+else
+    f_ingest(times10, impulses10, bottoms10, tops10, directions10, volumes10, touched10, broken10,
+         l10t, l10i, l10b, l10p, l10d, l10v, maxRecordsPerTF, false, rawBoxes, 600, "10m", line.style_dotted)
 
-if array.size(t5Arr) > 0
-    for i = 0 to array.size(t5Arr) - 1
-        int srcT = array.get(t5Arr, i)
-        if not na(srcT)
-            f_addRecord(times5, impulses5, bottoms5, tops5, directions5, volumes5, touched5, broken5,
-                 srcT, array.get(imp5Arr, i), array.get(bot5Arr, i), array.get(top5Arr, i), array.get(dir5Arr, i), array.get(vol5Arr, i), maxRecordsPerTF)
+if htf5
+    f_ingest(times5, impulses5, bottoms5, tops5, directions5, volumes5, touched5, broken5,
+         array.from(h5t), array.from(h5i), array.from(h5b), array.from(h5p), array.from(h5d), array.from(h5v),
+         maxRecordsPerTF, false, rawBoxes, 300, "5m", line.style_dotted)
+else
+    f_ingest(times5, impulses5, bottoms5, tops5, directions5, volumes5, touched5, broken5,
+         l5t, l5i, l5b, l5p, l5d, l5v, maxRecordsPerTF, false, rawBoxes, 300, "5m", line.style_dotted)
 
 // Update every saved OB independently.
 f_updateRecords(impulses30, bottoms30, tops30, directions30, touched30, broken30, 1800, maxAgeBars)
@@ -321,46 +360,32 @@ var array<box> zoneBoxes = array.new<box>()
 var array<string> zoneKeys = array.new<string>()
 var array<float> zoneTops = array.new<float>()
 var array<float> zoneBottoms = array.new<float>()
-var array<int> zoneDirections = array.new<int>()
 var array<int> zoneCreatedTimes = array.new<int>()
-var array<bool> zoneTouched = array.new<bool>()
-var array<bool> zoneStopped = array.new<bool>()
 var array<bool> zoneStrong = array.new<bool>()
 var array<string> drawnIds = array.new<string>()
 
-// Update already drawn rectangles. They fade on first retest and stop on invalidation.
-if array.size(zoneBoxes) > 0
-    for z = 0 to array.size(zoneBoxes) - 1
-        box bx = array.get(zoneBoxes, z)
-        bool wasTouched = array.get(zoneTouched, z)
-        bool wasStopped = array.get(zoneStopped, z)
-        float zTop = array.get(zoneTops, z)
-        float zBottom = array.get(zoneBottoms, z)
-        int zDir = array.get(zoneDirections, z)
-        int zCreated = array.get(zoneCreatedTimes, z)
-        color zBase = zDir == 1 ? color.teal : color.red
-        if not wasStopped and time > zCreated
-            if not wasTouched and high >= zBottom and low <= zTop
-                array.set(zoneTouched, z, true)
-                box.set_bgcolor(bx, color.new(zBase, touchedOpacity))
-                box.set_border_color(bx, color.new(zBase, 60))
-            bool invalid = (zDir == 1 and close < zBottom) or (zDir == -1 and close > zTop)
-            if invalid
-                array.set(zoneStopped, z, true)
-                box.set_extend(bx, extend.none)
-                box.set_right(bx, time)
-                box.set_bgcolor(bx, color.new(zBase, stoppedOpacity))
-                box.set_border_color(bx, color.new(zBase, 80))
+f_removeZone(int z) =>
+    box.delete(array.get(zoneBoxes, z))
+    array.remove(zoneBoxes, z)
+    array.remove(zoneKeys, z)
+    array.remove(zoneTops, z)
+    array.remove(zoneBottoms, z)
+    array.remove(zoneCreatedTimes, z)
+    array.remove(zoneStrong, z)
 
-bool chartIs30m = timeframe.in_seconds() == 1800
-float atrForDistance = ta.atr(14)
-float allowedGap = atrForDistance * nearATR
+// A zone disappears completely on its first touch (this also covers invalidation,
+// since price must pass through the zone to close beyond it).
+if array.size(zoneBoxes) > 0
+    for z = array.size(zoneBoxes) - 1 to 0
+        if time > array.get(zoneCreatedTimes, z) and high >= array.get(zoneBottoms, z) and low <= array.get(zoneTops, z)
+            f_removeZone(z)
+
 int primaryPairs = 0
 int fallbackTriples = 0
 int newPrimary = 0
 int newFallback = 0
 
-if chartIs30m and array.size(times15) > 0
+if array.size(times15) > 0
     for j = 0 to array.size(times15) - 1
         if f_recordUsable(impulses15, touched15, broken15, 900, maxAgeBars, j)
             int dir15 = array.get(directions15, j)
@@ -389,14 +414,11 @@ if chartIs30m and array.size(times15) > 0
                             array.push(zoneKeys, zoneId)
                             array.push(zoneTops, array.get(tops30, k))
                             array.push(zoneBottoms, array.get(bottoms30, k))
-                            array.push(zoneDirections, dir15)
                             array.push(zoneCreatedTimes, time)
-                            array.push(zoneTouched, false)
-                            array.push(zoneStopped, false)
                             array.push(zoneStrong, strongVolume)
                             array.push(drawnIds, zoneId)
                             newPrimary += 1
-                        else if zIdx >= 0 and strongVolume and not array.get(zoneStrong, zIdx) and not array.get(zoneTouched, zIdx) and not array.get(zoneStopped, zIdx)
+                        else if zIdx >= 0 and strongVolume and not array.get(zoneStrong, zIdx)
                             // Upgrade a weak box once a strong-volume pair confirms it.
                             box ub = array.get(zoneBoxes, zIdx)
                             box.set_bgcolor(ub, color.new(base, strongOpacity))
@@ -428,25 +450,14 @@ if chartIs30m and array.size(times15) > 0
                         array.push(zoneKeys, tripleId)
                         array.push(zoneTops, high15)
                         array.push(zoneBottoms, low15)
-                        array.push(zoneDirections, dir15)
                         array.push(zoneCreatedTimes, time)
-                        array.push(zoneTouched, false)
-                        array.push(zoneStopped, false)
                         array.push(zoneStrong, true)
                         array.push(drawnIds, tripleId)
                         newFallback += 1
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
 while array.size(zoneBoxes) > maxZones
-    box.delete(array.shift(zoneBoxes))
-    array.shift(zoneKeys)
-    array.shift(zoneTops)
-    array.shift(zoneBottoms)
-    array.shift(zoneDirections)
-    array.shift(zoneCreatedTimes)
-    array.shift(zoneTouched)
-    array.shift(zoneStopped)
-    array.shift(zoneStrong)
+    f_removeZone(0)
 while array.size(drawnIds) > maxZones * 8
     array.shift(drawnIds)
 
@@ -460,26 +471,27 @@ int fresh5Count = f_countUsable(impulses5, touched5, broken5, 300, maxAgeBars)
 
 var table status = table.new(position.top_right, 2, 10, border_width=1)
 if barstate.islast and showStatus
-    table.cell(status, 0, 0, "MTF OB STATUS v6", text_color=color.white, bgcolor=color.black)
+    color rowBg = color.new(color.black, 30)
+    table.cell(status, 0, 0, "MTF OB STATUS v6.1", text_color=color.white, bgcolor=color.black)
     table.cell(status, 1, 0, syminfo.ticker, text_color=color.white, bgcolor=color.black)
-    table.cell(status, 0, 1, "Chart timeframe", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 1, chartIs30m ? "30m · OK" : "SWITCH TO 30m", text_color=chartIs30m ? color.lime : color.orange, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 2, "OBs detected (history)", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 2, "30m " + str.tostring(total30) + " | 15m " + str.tostring(total15), text_color=color.aqua, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 3, "Fresh now 30m / 15m", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 3, str.tostring(fresh30Count) + " | " + str.tostring(fresh15Count), text_color=color.aqua, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 4, "Fresh now 10m / 5m", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 4, str.tostring(fresh10Count) + " | " + str.tostring(fresh5Count), text_color=color.aqua, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 5, "Active 30m + 15m", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 5, str.tostring(primaryPairs), text_color=primaryPairs > 0 ? color.lime : color.gray, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 6, "Active 15m + 10m + 5m", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 6, str.tostring(fallbackTriples), text_color=fallbackTriples > 0 ? color.lime : color.gray, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 7, "Zones on chart", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 7, str.tostring(array.size(zoneBoxes)), text_color=color.aqua, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 8, "OB session filter", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 8, restrictToSessions ? "Tokyo / London / NY" : "OFF", text_color=restrictToSessions ? color.lime : color.orange, bgcolor=color.new(color.black, 30))
-    table.cell(status, 0, 9, "FVG required", text_color=color.white, bgcolor=color.new(color.black, 30))
-    table.cell(status, 1, 9, requireFVG ? "ON" : "OFF", text_color=requireFVG ? color.lime : color.orange, bgcolor=color.new(color.black, 30))
+    table.cell(status, 0, 1, "Chart timeframe", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 1, timeframe.period + " · data 30/15/10/5m", text_color=color.lime, bgcolor=rowBg)
+    table.cell(status, 0, 2, "OBs detected (history)", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 2, "30m " + str.tostring(total30) + " | 15m " + str.tostring(total15), text_color=color.aqua, bgcolor=rowBg)
+    table.cell(status, 0, 3, "Fresh now 30m / 15m", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 3, str.tostring(fresh30Count) + " | " + str.tostring(fresh15Count), text_color=color.aqua, bgcolor=rowBg)
+    table.cell(status, 0, 4, "Fresh now 10m / 5m", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 4, str.tostring(fresh10Count) + " | " + str.tostring(fresh5Count), text_color=color.aqua, bgcolor=rowBg)
+    table.cell(status, 0, 5, "Active 30m + 15m", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 5, str.tostring(primaryPairs), text_color=primaryPairs > 0 ? color.lime : color.gray, bgcolor=rowBg)
+    table.cell(status, 0, 6, "Active 15m + 10m + 5m", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 6, str.tostring(fallbackTriples), text_color=fallbackTriples > 0 ? color.lime : color.gray, bgcolor=rowBg)
+    table.cell(status, 0, 7, "Untouched zones on chart", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 7, str.tostring(array.size(zoneBoxes)), text_color=color.aqua, bgcolor=rowBg)
+    table.cell(status, 0, 8, "OB session filter", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 8, restrictToSessions ? "Tokyo / London / NY" : "OFF", text_color=restrictToSessions ? color.lime : color.orange, bgcolor=rowBg)
+    table.cell(status, 0, 9, "FVG required", text_color=color.white, bgcolor=rowBg)
+    table.cell(status, 1, 9, requireFVG ? "ON" : "OFF", text_color=requireFVG ? color.lime : color.orange, bgcolor=rowBg)
 if barstate.islast and not showStatus
     table.clear(status, 0, 0, 1, 9)
 
@@ -487,8 +499,10 @@ alertcondition(newPrimary > 0, "New 30m + 15m OB zone", "A new 30m Order Block z
 alertcondition(newFallback > 0, "New 15m + 10m + 5m OB zone", "A new 15m Order Block zone with 10m and 5m confirmation plus 15m volume was drawn on {{ticker}}.")
 
 // Notes:
-// - Run on XAUUSD 30m. Lower timeframe arrays collect all 15m / 10m / 5m intrabars.
+// - Works on any chart timeframe; detection always uses 30m / 15m / 10m / 5m data.
+// - Zones are removed from the chart on their first touch.
+// - On high chart timeframes (4H, D) touches are checked with the chart candles,
+//   so a touch is noticed only when that candle forms. On 1D/1W the 5m
+//   intrabar history is limited by TradingView, so older zones may be missing.
 // - Session filter applies only to the OB source candle, not the impulse candle.
-// - Volume is the current chart symbol's volume series (OANDA XAUUSD Tick Volume in the user's setup).
-// - If zones are still missing, enable the Debug options to see which raw 30m / 15m
-//   OBs are detected, then loosen "Impulse body / ATR", "Allowed distance" or FVG.
+// - Volume is the chart symbol's volume (OANDA XAUUSD Tick Volume in the user's setup).
