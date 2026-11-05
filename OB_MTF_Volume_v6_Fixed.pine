@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.23", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.24", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -614,6 +614,10 @@ f_findEntry(int z, int fromIdx) =>
     float zBot = array.get(zoneBottoms, z)
     int zDir = array.get(zoneDirs, z)
     int zLeft = array.get(zoneLefts, z)
+    // The 1m block must belong to the move that built the zone: its source candle
+    // lies between the zone's source candle and the confirmation of the zone's
+    // main block. Blocks from later, unrelated moves are never used.
+    int zConfirm = array.get(zoneCheckFroms, z)
     // Start from the current entry, so only a better block replaces it.
     float bestT = array.get(zoneEntryTops, z)
     float bestB = array.get(zoneEntryBottoms, z)
@@ -622,7 +626,7 @@ f_findEntry(int z, int fromIdx) =>
     int startIdx = math.max(fromIdx, 0)
     if array.size(times1) > startIdx and not na(maxGap)
         for i = startIdx to array.size(times1) - 1
-            if array.get(directions1, i) == zDir and na(array.get(hits1, i)) and array.get(times1, i) >= zLeft
+            if array.get(directions1, i) == zDir and na(array.get(hits1, i)) and array.get(times1, i) >= zLeft and array.get(times1, i) <= zConfirm
                 float b1 = array.get(bottoms1, i)
                 float t1 = array.get(tops1, i)
                 float gap = math.max(0.0, math.max(b1, zBot) - math.min(t1, zTop))
@@ -693,6 +697,10 @@ if array.size(zoneBoxes) > 0
         if not na(eb) and not array.get(zoneEntryHit, z)
             if not na(f_firstTouch(curT, curH, curL, array.get(zoneEntryChecks, z), array.get(zoneEntryBottoms, z), array.get(zoneEntryTops, z)))
                 newEntryHit += 1
+                // Remember the zone so it is never rebuilt (its own block may still be untouched).
+                string usedKey = array.get(zoneKeys, z)
+                if not f_hasId(drawnIds, usedKey)
+                    array.push(drawnIds, usedKey)
                 f_removeZone(z)
 
 // A zone (and its entry) disappears completely on its first touch.
@@ -842,7 +850,8 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                 f_pushZoneMeta(dir15, array.get(times15, j), "15·10·5  " + f_volShort(g15, r15), info15)
                 newFallback += 1
 
-// 1m entries. A new zone searches all stored 1m blocks. Until price reaches the
+// 1m entries (only 1m blocks from the move that built the zone, see f_findEntry).
+// A new zone searches all stored 1m blocks. Until price reaches the
 // entry, every new 1m block is compared with the current entry and replaces it
 // when it is better (more extreme, or closer in "Closest" mode). So the entry is
 // always the best block available, whatever the chart timeframe; once price has
