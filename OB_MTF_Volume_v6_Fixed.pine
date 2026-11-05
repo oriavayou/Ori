@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.20", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.21", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -606,27 +606,34 @@ f_pushZoneMeta(int dir, int left, string txt, string info) =>
 // distance of the zone.
 //   Extreme: the highest block for a sell zone, the lowest for a buy zone.
 //   Closest: the nearest block; on a tie, the one price reaches first.
+// Returns the index of a 1m block that is better than the zone's current entry
+// (or than nothing, when it has none), or na.
 f_findEntry(int z, int fromIdx) =>
     int best = na
-    float bestGap = na
     float zTop = array.get(zoneTops, z)
     float zBot = array.get(zoneBottoms, z)
     int zDir = array.get(zoneDirs, z)
     int zLeft = array.get(zoneLefts, z)
+    // Start from the current entry, so only a better block replaces it.
+    float bestT = array.get(zoneEntryTops, z)
+    float bestB = array.get(zoneEntryBottoms, z)
+    float bestGap = na(bestT) ? na : math.max(0.0, math.max(bestB, zBot) - math.min(bestT, zTop))
     float maxGap = atr30 * entryATR
     int startIdx = math.max(fromIdx, 0)
-    if array.size(times1) > startIdx and not na(maxGap) and not na(knownUntil)
+    if array.size(times1) > startIdx and not na(maxGap)
         for i = startIdx to array.size(times1) - 1
-            if array.get(directions1, i) == zDir and na(array.get(hits1, i)) and array.get(times1, i) >= zLeft and array.get(checks1, i) <= knownUntil
+            if array.get(directions1, i) == zDir and na(array.get(hits1, i)) and array.get(times1, i) >= zLeft
                 float b1 = array.get(bottoms1, i)
                 float t1 = array.get(tops1, i)
                 float gap = math.max(0.0, math.max(b1, zBot) - math.min(t1, zTop))
                 if gap <= maxGap
-                    bool better = na(best) ? true :
-                         entryPick == "Extreme" ? (zDir == 1 ? b1 < array.get(bottoms1, best) : t1 > array.get(tops1, best)) :
-                         gap < bestGap or (gap == bestGap and (zDir == 1 ? t1 > array.get(tops1, best) : b1 < array.get(bottoms1, best)))
+                    bool better = na(bestT) ? true :
+                         entryPick == "Extreme" ? (zDir == 1 ? b1 < bestB : t1 > bestT) :
+                         gap < bestGap or (gap == bestGap and (zDir == 1 ? t1 > bestT : b1 < bestB))
                     if better
                         best := i
+                        bestT := t1
+                        bestB := b1
                         bestGap := gap
     best
 
@@ -635,6 +642,9 @@ f_setEntry(int z, int i) =>
     float t1 = array.get(tops1, i)
     float b1 = array.get(bottoms1, i)
     color ec = entryColor
+    box old = array.get(zoneEntryBoxes, z)
+    if not na(old)
+        box.delete(old)
     box eb = box.new(left=array.get(times1, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
          bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2)
     array.set(zoneEntryBoxes, z, eb)
@@ -833,15 +843,19 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                 f_pushZoneMeta(dir15, array.get(times15, j), "15·10·5  " + f_volShort(g15, r15), info15)
                 newFallback += 1
 
-// 1m entries: a new zone searches all stored 1m blocks; a zone still without an
-// entry only needs to look at the 1m blocks added on this bar.
+// 1m entries. A new zone searches all stored 1m blocks. Until price reaches the
+// entry, every new 1m block is compared with the current entry and replaces it
+// when it is better (more extreme, or closer in "Closest" mode). So the entry is
+// always the best block available, whatever the chart timeframe; once price has
+// reached it, it stays fixed.
 if showEntry and array.size(zoneBoxes) > 0
     for z = 0 to array.size(zoneBoxes) - 1
-        if na(array.get(zoneEntryBoxes, z))
+        if not array.get(zoneEntryHit, z)
             int fromIdx = array.get(zoneCreated, z) == time ? 0 : array.size(times1) - added1
-            int e = f_findEntry(z, fromIdx)
-            if not na(e)
-                f_setEntry(z, e)
+            if fromIdx < array.size(times1)
+                int e = f_findEntry(z, fromIdx)
+                if not na(e)
+                    f_setEntry(z, e)
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
 while array.size(zoneBoxes) > maxZones
