@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.39", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.40", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -849,13 +849,22 @@ if array.size(zoneBoxes) > 0
                     array.push(drawnIds, usedKey)
                 f_removeZone(z)
 
-// A zone WITH an entry stays until its entry block is touched (handled above), even
-// if price touches the zone itself first. A zone without an entry disappears on its
-// first touch.
+// A zone WITH an entry stays until its entry block is touched (handled above), or
+// until price crosses at least half of the zone (reaches its middle).
+// A zone without an entry disappears on its first touch.
 if array.size(zoneBoxes) > 0
     for z = array.size(zoneBoxes) - 1 to 0
+        float zTop = array.get(zoneTops, z)
+        float zBot = array.get(zoneBottoms, z)
+        int zFrom = array.get(zoneCheckFroms, z)
         if na(array.get(zoneEntryBoxes, z))
-            if not na(f_firstTouch(curT, curH, curL, array.get(zoneCheckFroms, z), array.get(zoneBottoms, z), array.get(zoneTops, z)))
+            if not na(f_firstTouch(curT, curH, curL, zFrom, zBot, zTop))
+                f_removeZone(z)
+        else
+            // Buy zone: a low at or below the middle. Sell zone: a high at or above it.
+            float mid = (zTop + zBot) / 2
+            bool buyZone = array.get(zoneDirs, z) == 1
+            if not na(f_firstTouch(curT, curH, curL, zFrom, buyZone ? zBot - 1e9 : mid, buyZone ? mid : zTop + 1e9))
                 f_removeZone(z)
 
 int newPrimary = 0
