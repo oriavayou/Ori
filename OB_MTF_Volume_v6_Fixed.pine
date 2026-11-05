@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.11 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.12 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -14,6 +14,12 @@ indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.11 Any TF]", overlay=true, 
 //   with its 15m block (v6.4 hid it forever, so a 15m block whose 30m partner
 //   was touched got no zone at all).
 // - v6.7: debug boxes show only untouched blocks, with their volume status.
+// - v6.12: three volume grades. Ratio = highest volume of the impulse candle and
+//   the candles before it / average volume before the impulse:
+//     VOL STRONG  >= "Very strong volume threshold" (default x2.5) - darkest box, thick border
+//     VOL OK      >= "Good volume threshold" (default x1.5)
+//     LOW VOL     below that (30m+15m zones only, drawn faint)
+//   The ratio is printed on every zone, e.g. "VOL STRONG x3.1".
 // - v6.4: the volume filter checks the impulse candle and the candles before it;
 //   the candle after the impulse no longer counts (v6.0-v6.3 counted it).
 //
@@ -36,7 +42,8 @@ int maxAgeBars = input.int(100, "Maximum OB age (bars of its own timeframe)", mi
 
 string GROUP_VOL = "Volume Filter (chart symbol)"
 int volLen = input.int(20, "Volume average length", minval=2, group=GROUP_VOL)
-float volMultiplier = input.float(1.50, "High-volume threshold", minval=1.0, step=0.05, group=GROUP_VOL)
+float volMultiplier = input.float(1.50, "Good volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
+float volStrongMultiplier = input.float(2.50, "Very strong volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
 int volumeWindow = input.int(3, "Volume scan window around impulse", minval=1, maxval=5, group=GROUP_VOL)
 
 string GROUP_MTF = "Multi-timeframe Confirmation"
@@ -55,7 +62,8 @@ string newYorkSession = input.session("0930-1600", "Hours", inline="NY", group=G
 string GROUP_DRAW = "Display"
 int maxZones = input.int(40, "Maximum zones to keep", minval=1, maxval=150, group=GROUP_DRAW)
 int maxRecordsPerTF = input.int(80, "Maximum OB records per timeframe", minval=10, maxval=250, group=GROUP_DRAW)
-int strongOpacity = input.int(70, "Strong-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
+int veryStrongOpacity = input.int(55, "Very strong volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
+int strongOpacity = input.int(70, "Good volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 int weakOpacity = input.int(86, "Weak-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 string labelSizeInput = input.string("Normal", "Zone text size", options=["Small", "Normal", "Large"], group=GROUP_DRAW)
 bool autoTextColor = input.bool(true, "Zone text: automatic colour (black on light chart, white on dark)", group=GROUP_DRAW)
@@ -110,7 +118,7 @@ f_scanOB() =>
     // Volume: the highest volume of the impulse candle and the candles just before
     // it (bars [1]..[window]) against the average of the bars before the impulse.
     // The candle AFTER the impulse is not counted.
-    bool volumePass = not na(avgVol[2]) and not na(volPeak[1]) and volPeak[1] >= avgVol[2] * volMultiplier
+    float volRatio = not na(avgVol[2]) and avgVol[2] > 0 and not na(volPeak[1]) ? volPeak[1] / avgVol[2] : na
 
     int src = na
     int dir = 0
@@ -131,7 +139,7 @@ f_scanOB() =>
     float srcBottom = na
     float srcTop = na
     int outDir = 0
-    bool outVol = false
+    float outVol = na
     if not na(src)
         float b = math.min(open[src], close[src])
         float t = math.max(open[src], close[src])
@@ -151,7 +159,7 @@ f_scanOB() =>
             srcBottom := b
             srcTop := t
             outDir := dir
-            outVol := volumePass
+            outVol := volRatio
     [srcTime, impulseTime, checkFrom, srcBottom, srcTop, outDir, outVol]
 
 // Previous confirmed bar of the scanner, for request.security() with lookahead_on
@@ -179,8 +187,8 @@ f_firstTouch(array<int> cT, array<float> cH, array<float> cL, int fromTime, floa
     hitAt
 
 f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<int> touchedAts, array<float> bottoms, array<float> tops,
-            array<int> directions, array<bool> volumePasses,
-            int srcTime, int impulseTime, int checkFrom, float bottom, float top, int direction, bool volumePass, int maxRecords,
+            array<int> directions, array<float> volumePasses,
+            int srcTime, int impulseTime, int checkFrom, float bottom, float top, int direction, float volumePass, int maxRecords,
             array<int> bufT, array<float> bufH, array<float> bufL) =>
     bool added = false
     if not na(srcTime) and not na(impulseTime) and not na(checkFrom) and not na(bottom) and not na(top) and direction != 0
@@ -211,15 +219,31 @@ f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, ar
                 array.shift(volumePasses)
     added
 
+// Volume grade from the ratio (impulse peak / average): 2 = very strong, 1 = good, 0 = low.
+f_grade(float ratio) =>
+    na(ratio) ? 0 : ratio >= volStrongMultiplier ? 2 : ratio >= volMultiplier ? 1 : 0
+
+f_volText(int grade, float ratio) =>
+    (grade == 2 ? "VOL STRONG" : grade == 1 ? "VOL OK" : "LOW VOL") + (na(ratio) ? "" : " x" + str.tostring(ratio, "#.#"))
+
+f_fillT(int grade) =>
+    grade == 2 ? veryStrongOpacity : grade == 1 ? strongOpacity : weakOpacity
+
+f_borderT(int grade) =>
+    grade == 2 ? 0 : grade == 1 ? 10 : 50
+
+f_borderW(int grade) =>
+    grade == 2 ? 3 : grade == 1 ? 2 : 1
+
 // Debug box for one untouched single-timeframe block; deleted on its first touch.
 f_rawBox(array<box> store, array<float> rTops, array<float> rBottoms, array<int> rChecks, array<string> rTfs, array<int> rSrcs,
-         int srcTime, int checkFrom, float bottom, float top, int direction, bool volOK, string tfText, string lineStyle) =>
+         int srcTime, int checkFrom, float bottom, float top, int direction, float volRatio, string tfText, string lineStyle) =>
     color base = direction == 1 ? color.teal : color.red
     // 30m/15m text on the left, 10m in the middle, 5m on the right, so stacked
     // debug boxes at the same price do not print over each other.
     box bx = box.new(left=srcTime, top=top, right=time, bottom=bottom, xloc=xloc.bar_time, extend=extend.right,
          bgcolor=color.new(base, 100), border_color=color.new(base, 20), border_width=1, border_style=lineStyle,
-         text=PAD + tfText + (volOK ? " · VOL OK" : " · LOW VOL"), text_color=zoneTextColor, text_size=size.small,
+         text=PAD + tfText + " · " + f_volText(f_grade(volRatio), volRatio), text_color=zoneTextColor, text_size=size.small,
          text_halign=tfText == "10m" ? text.align_center : tfText == "5m" ? text.align_right : text.align_left, text_valign=text.align_bottom)
     array.push(store, bx)
     array.push(rTops, top)
@@ -237,8 +261,8 @@ f_rawBox(array<box> store, array<float> rTops, array<float> rBottoms, array<int>
 
 // Push every OB event found in one timeframe's array into its record store.
 f_ingest(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<int> touchedAts, array<float> bottoms, array<float> tops,
-         array<int> directions, array<bool> volumePasses,
-         array<int> tArr, array<int> iArr, array<int> cArr, array<float> bArr, array<float> pArr, array<int> dArr, array<bool> vArr,
+         array<int> directions, array<float> volumePasses,
+         array<int> tArr, array<int> iArr, array<int> cArr, array<float> bArr, array<float> pArr, array<int> dArr, array<float> vArr,
          int maxRecords, array<int> bufT, array<float> bufH, array<float> bufL,
          bool drawRaw, array<box> rawStore, array<float> rTops, array<float> rBottoms, array<int> rChecks, array<string> rTfs, array<int> rSrcs, string tfText, string lineStyle) =>
     int addedCount = 0
@@ -365,7 +389,7 @@ var array<int> hits30 = array.new<int>()
 var array<float> bottoms30 = array.new<float>()
 var array<float> tops30 = array.new<float>()
 var array<int> directions30 = array.new<int>()
-var array<bool> volumes30 = array.new<bool>()
+var array<float> volumes30 = array.new<float>()
 
 var array<int> times15 = array.new<int>()
 var array<int> impulses15 = array.new<int>()
@@ -374,7 +398,7 @@ var array<int> hits15 = array.new<int>()
 var array<float> bottoms15 = array.new<float>()
 var array<float> tops15 = array.new<float>()
 var array<int> directions15 = array.new<int>()
-var array<bool> volumes15 = array.new<bool>()
+var array<float> volumes15 = array.new<float>()
 
 var array<int> times10 = array.new<int>()
 var array<int> impulses10 = array.new<int>()
@@ -383,7 +407,7 @@ var array<int> hits10 = array.new<int>()
 var array<float> bottoms10 = array.new<float>()
 var array<float> tops10 = array.new<float>()
 var array<int> directions10 = array.new<int>()
-var array<bool> volumes10 = array.new<bool>()
+var array<float> volumes10 = array.new<float>()
 
 var array<int> times5 = array.new<int>()
 var array<int> impulses5 = array.new<int>()
@@ -392,7 +416,7 @@ var array<int> hits5 = array.new<int>()
 var array<float> bottoms5 = array.new<float>()
 var array<float> tops5 = array.new<float>()
 var array<int> directions5 = array.new<int>()
-var array<bool> volumes5 = array.new<bool>()
+var array<float> volumes5 = array.new<float>()
 
 var array<box> rawBoxes = array.new<box>()
 var array<float> rawTops = array.new<float>()
@@ -482,7 +506,7 @@ var array<string> zoneKeys = array.new<string>()
 var array<float> zoneTops = array.new<float>()
 var array<float> zoneBottoms = array.new<float>()
 var array<int> zoneCheckFroms = array.new<int>()
-var array<bool> zoneStrong = array.new<bool>()
+var array<int> zoneGrade = array.new<int>()
 var array<string> drawnIds = array.new<string>()
 
 f_removeZone(int z) =>
@@ -492,7 +516,7 @@ f_removeZone(int z) =>
     array.remove(zoneTops, z)
     array.remove(zoneBottoms, z)
     array.remove(zoneCheckFroms, z)
-    array.remove(zoneStrong, z)
+    array.remove(zoneGrade, z)
 
 f_removeZoneByKey(string key) =>
     int idx = f_indexOf(zoneKeys, key)
@@ -527,7 +551,10 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                     int startPair = math.max(start30, array.get(checks15, j))
                     int endPair = math.min(f_windowEnd(hits15, impulses15, 900, j), end30)
                     if startPair < endPair
-                        bool strongVolume = array.get(volumes30, k) and array.get(volumes15, j)
+                        // Pair grade = the weaker of the two volumes.
+                        float pairRatio = math.min(nz(array.get(volumes30, k)), nz(array.get(volumes15, j)))
+                        int pairGrade = math.min(f_grade(array.get(volumes30, k)), f_grade(array.get(volumes15, j)))
+                        string pairText = PAD + "30m+15m · " + f_volText(pairGrade, pairRatio) + (showZoneInfo ? "\n" + PAD + "30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) : "")
                         // While this 30m zone exists it replaces a 15m+10m+5m zone built
                         // on the same 15m block. If the 30m block is touched later, the
                         // 15m zone may come back (it depends only on the current state,
@@ -540,8 +567,8 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                         int zIdx = f_indexOf(zoneKeys, zoneId)
                         if zIdx == -1 and not f_hasId(drawnIds, zoneId)
                             box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
-                                 bgcolor=color.new(base, strongVolume ? strongOpacity : weakOpacity), border_color=color.new(base, strongVolume ? 10 : 50), border_width=strongVolume ? 2 : 1,
-                                 text=PAD + (strongVolume ? "30m+15m · VOL OK" : "30m+15m · LOW VOL") + (showZoneInfo ? "\n" + PAD + "30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) : ""),
+                                 bgcolor=color.new(base, f_fillT(pairGrade)), border_color=color.new(base, f_borderT(pairGrade)), border_width=f_borderW(pairGrade),
+                                 text=pairText,
                                  text_color=zoneTextColor, text_size=zoneTextSize,
                                  text_halign=text.align_left, text_valign=text.align_top)
                             array.push(zoneBoxes, newBox)
@@ -549,22 +576,23 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                             array.push(zoneTops, high30)
                             array.push(zoneBottoms, low30)
                             array.push(zoneCheckFroms, start30)
-                            array.push(zoneStrong, strongVolume)
+                            array.push(zoneGrade, pairGrade)
                             array.push(drawnIds, zoneId)
                             newPrimary += 1
-                        else if zIdx >= 0 and strongVolume and not array.get(zoneStrong, zIdx)
+                        else if zIdx >= 0 and pairGrade > array.get(zoneGrade, zIdx)
+                            // Upgrade the box when a pair with better volume confirms it.
                             box ub = array.get(zoneBoxes, zIdx)
-                            box.set_bgcolor(ub, color.new(base, strongOpacity))
-                            box.set_border_color(ub, color.new(base, 10))
-                            box.set_border_width(ub, 2)
-                            box.set_text(ub, PAD + "30m+15m · VOL OK" + (showZoneInfo ? "\n" + PAD + "30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) : ""))
-                            array.set(zoneStrong, zIdx, true)
+                            box.set_bgcolor(ub, color.new(base, f_fillT(pairGrade)))
+                            box.set_border_color(ub, color.new(base, f_borderT(pairGrade)))
+                            box.set_border_width(ub, f_borderW(pairGrade))
+                            box.set_text(ub, pairText)
+                            array.set(zoneGrade, zIdx, pairGrade)
 
 // Fallback 15m + 10m + 5m.
 if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 and array.size(times5) > 0
     for j = 0 to array.size(times15) - 1
         string tripleId = "F|" + str.tostring(array.get(times15, j))
-        if f_aliveNow(hits15, impulses15, 900, j) and array.get(volumes15, j) and not array.get(has30Now, j) and f_indexOf(zoneKeys, tripleId) == -1 and not f_hasId(drawnIds, tripleId)
+        if f_aliveNow(hits15, impulses15, 900, j) and f_grade(array.get(volumes15, j)) >= 1 and not array.get(has30Now, j) and f_indexOf(zoneKeys, tripleId) == -1 and not f_hasId(drawnIds, tripleId)
             int dir15 = array.get(directions15, j)
             float low15 = array.get(bottoms15, j)
             float high15 = array.get(tops15, j)
@@ -589,9 +617,11 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
 
             if found
                 color base = dir15 == 1 ? color.teal : color.red
+                float r15 = array.get(volumes15, j)
+                int g15 = f_grade(r15)
                 box newBox = box.new(left=array.get(times15, j), top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
-                     bgcolor=color.new(base, strongOpacity), border_color=color.new(base, 10), border_width=2,
-                     text=PAD + "15m+10m+5m · VOL OK" + (showZoneInfo ? "\n" + PAD + "15m " + f_hm(array.get(times15, j)) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""),
+                     bgcolor=color.new(base, f_fillT(g15)), border_color=color.new(base, f_borderT(g15)), border_width=f_borderW(g15),
+                     text=PAD + "15m+10m+5m · " + f_volText(g15, r15) + (showZoneInfo ? "\n" + PAD + "15m " + f_hm(array.get(times15, j)) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""),
                      text_color=zoneTextColor, text_size=zoneTextSize,
                      text_halign=text.align_left, text_valign=text.align_top)
                 array.push(zoneBoxes, newBox)
@@ -599,7 +629,7 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                 array.push(zoneTops, high15)
                 array.push(zoneBottoms, low15)
                 array.push(zoneCheckFroms, start15)
-                array.push(zoneStrong, true)
+                array.push(zoneGrade, g15)
                 newFallback += 1
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
@@ -642,15 +672,18 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
                             if math.max(start15, array.get(checks5, b)) < math.min(end15, f_windowEnd(hits5, impulses5, 300, b))
                                 ok5 += 1
                 string gapTxt = " (max gap " + str.tostring(allowedGap, "#.##") + ")"
+                float rj = array.get(volumes15, j)
+                int gj = f_grade(rj)
+                string v = f_volText(gj, rj)
                 string why = not f_aliveNow(hits15, impulses15, 900, j) ? "too old" :
-                     not array.get(volumes15, j) ? "LOW VOL -> no zone" :
-                     array.get(has30Now, j) ? "VOL OK -> part of 30m+15m zone" :
-                     f_indexOf(zoneKeys, "F|" + str.tostring(src)) >= 0 ? "VOL OK -> zone" :
-                     near10 == 0 ? "VOL OK -> no 10m block close enough" + gapTxt :
-                     ok10 == 0 ? "VOL OK -> 10m block touched before this 15m block was confirmed" :
-                     near5 == 0 ? "VOL OK -> no 5m block close enough" + gapTxt :
-                     ok5 == 0 ? "VOL OK -> 5m block touched before this 15m block was confirmed" :
-                     "VOL OK -> 10m and 5m blocks never valid at the same time"
+                     gj == 0 ? v + " -> no zone" :
+                     array.get(has30Now, j) ? v + " -> part of 30m+15m zone" :
+                     f_indexOf(zoneKeys, "F|" + str.tostring(src)) >= 0 ? v + " -> zone" :
+                     near10 == 0 ? v + " -> no 10m block close enough" + gapTxt :
+                     ok10 == 0 ? v + " -> 10m block touched before this 15m block was confirmed" :
+                     near5 == 0 ? v + " -> no 5m block close enough" + gapTxt :
+                     ok5 == 0 ? v + " -> 5m block touched before this 15m block was confirmed" :
+                     v + " -> 10m and 5m blocks never valid at the same time"
                 box.set_text(array.get(rawBoxes, r), PAD + "15m " + f_hm(src) + " · " + why)
 
 alertcondition(newPrimary > 0, "New 30m + 15m OB zone", "A new 30m Order Block zone with 15m confirmation was drawn on {{ticker}}.")
