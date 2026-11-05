@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.32", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.33", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -47,6 +47,8 @@ indicator("MTF Order Blocks v6.32", shorttitle="MTF OB", overlay=true, max_boxes
 // -----------------------------------------------------------------------------
 string GROUP_OB = "Order Block Detection"
 int atrLen = input.int(14, "ATR length", minval=2, group=GROUP_OB)
+string impulseMode = input.string("Move (several candles)", "Impulse", options=["Move (several candles)", "Single candle"], group=GROUP_OB,
+     tooltip="Move = the break of the block candle may take several candles: the first candle that closes beyond the block candle, with the whole move since the block >= 'Impulse body / ATR' and an FVG somewhere in the move. Single candle = one big candle must do it all.")
 string bosMode = input.string("Block candle", "Impulse must break", options=["Block candle", "Last N candles"], group=GROUP_OB,
      tooltip="Block candle = the impulse closes above the high of the block candle (below its low for a sell block). Last N candles = the impulse closes above the highest high of the N candles before it (stricter: an old spike can block it).")
 int structureLen = input.int(5, "Break of structure lookback (Last N candles)", minval=2, maxval=30, group=GROUP_OB)
@@ -172,6 +174,36 @@ f_scanOB() =>
         if not brokeBlock
             src := na
 
+    // "Move" mode: bar [1] is the FIRST candle that closes beyond the block candle
+    // (last opposite candle within searchLen). The whole move from the block close
+    // to bar [1] must be >= impulseATR x ATR, and an FVG must exist inside the move.
+    if impulseMode == "Move (several candles)"
+        src := na
+        dir := 0
+        for side = 0 to 1
+            int want = side == 0 ? 1 : -1
+            int sB = na
+            for i = 2 to searchLen + 1
+                bool opp = want == 1 ? close[i] < open[i] : close[i] > open[i]
+                if na(sB) and opp and (not restrictToSessions or inAllowedSession[i])
+                    sB := i
+            if dir == 0 and not na(sB)
+                float lvlB = want == 1 ? high[sB] : low[sB]
+                bool firstBreak = want == 1 ? close[1] > lvlB : close[1] < lvlB
+                if sB > 2
+                    for k = sB - 1 to 2
+                        if want == 1 ? close[k] > lvlB : close[k] < lvlB
+                            firstBreak := false
+                float leg = want == 1 ? close[1] - close[sB] : close[sB] - close[1]
+                bool bigLeg = not na(atrNow[1]) and leg >= atrNow[1] * impulseATR
+                bool fvgLeg = not requireFVG
+                for k = sB - 1 to 1
+                    if want == 1 ? low[k - 1] > high[k + 1] : high[k - 1] < low[k + 1]
+                        fvgLeg := true
+                if firstBreak and bigLeg and fvgLeg
+                    src := sB
+                    dir := want
+
     int srcTime = na
     int impulseTime = na
     int checkFrom = na
@@ -183,13 +215,14 @@ f_scanOB() =>
         float b = math.min(open[src], close[src])
         float t = math.max(open[src], close[src])
         // Walk from the candle after the source up to bar [0]: once a candle has
-        // CLOSED outside the block, any later wick inside it invalidates the block.
+        // CLOSED beyond the block candle (above its high for a buy block, below its
+        // low for a sell block = the break), any later wick inside the block kills it.
         bool leftBlock = false
         bool retouched = false
         for j = src - 1 to 0
             if leftBlock and high[j] >= b and low[j] <= t
                 retouched := true
-            if close[j] > t or close[j] < b
+            if dir == 1 ? close[j] > high[src] : close[j] < low[src]
                 leftBlock := true
         // Volume: highest volume of the block candle and up to `volumeWindow` candles
         // before and after it (after = only candles that already closed, so at
@@ -391,16 +424,30 @@ f_explain() =>
     if explainOn
         for j = 2 to searchLen + 1
             if time[j] <= explainTime and explainTime < time_close[j]
-                bool bull = close[1] > open[1]
+                bool moveM = impulseMode == "Move (several candles)"
+                // Direction from the block candle in Move mode, from bar [1] in Single mode.
+                bool bull = moveM ? close[j] < open[j] : close[1] > open[1]
                 string ok = " ✓"
                 string bad = " ✗"
                 bool oppositeOK = bull ? close[j] < open[j] : close[j] > open[j]
                 float body1 = math.abs(close[1] - open[1])
                 float bAtr = body1 / atrNow[1]
                 float bRng = body1 / math.max(high[1] - low[1], syminfo.mintick)
-                float lvl = bosMode == "Block candle" ? (bull ? high[j] : low[j]) : (bull ? structHigh[2] : structLow[2])
+                float lvl = moveM or bosMode == "Block candle" ? (bull ? high[j] : low[j]) : (bull ? structHigh[2] : structLow[2])
                 bool bos = bull ? close[1] > lvl : close[1] < lvl
                 bool fvg = bull ? low > high[2] : high < low[2]
+                // Move mode: first close beyond the block, size of the whole move, FVG anywhere in it.
+                bool firstBreak = bos
+                if j > 2
+                    for k = j - 1 to 2
+                        if bull ? close[k] > lvl : close[k] < lvl
+                            firstBreak := false
+                float leg = bull ? close[1] - close[j] : close[j] - close[1]
+                float legAtr = leg / atrNow[1]
+                bool fvgLeg = false
+                for k = j - 1 to 1
+                    if bull ? low[k - 1] > high[k + 1] : high[k - 1] < low[k + 1]
+                        fvgLeg := true
                 int src = na
                 for i = 2 to searchLen + 1
                     bool opp = bull ? close[i] < open[i] : close[i] > open[i]
@@ -415,17 +462,21 @@ f_explain() =>
                 for k = j - 1 to 0
                     if leftB and high[k] >= b and low[k] <= t
                         ret := true
-                    if close[k] > t or close[k] < b
+                    if bull ? close[k] > high[j] : close[k] < low[j]
                         leftB := true
                 float peak = 0.0
                 for k = j + volumeWindow to math.max(j - volumeWindow, 0)
                     peak := math.max(peak, nz(volume[k]))
                 float base = avgVol[j + volumeWindow + 1]
-                line := "impulse " + f_hm(time[1]) + (bull ? " ▲" : " ▼") +
+                string rules = moveM ?
+                     "\nfirst close beyond block " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (firstBreak ? ok : bad) +
+                     "\nmove/ATR " + str.tostring(legAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (legAtr >= impulseATR ? ok : bad) +
+                     "\nFVG in the move" + (fvgLeg or not requireFVG ? ok : bad) :
                      "\nbody/ATR " + str.tostring(bAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (bAtr >= impulseATR ? ok : bad) +
                      "\nbody/range " + str.tostring(bRng, "#.##") + " (" + str.tostring(minBodyPct) + ")" + (bRng >= minBodyPct ? ok : bad) +
                      "\nbreak " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (bos ? ok : bad) +
-                     "\nFVG" + (fvg ? ok : bad) +
+                     "\nFVG" + (fvg or not requireFVG ? ok : bad)
+                line := (moveM ? "break candle " : "impulse ") + f_hm(time[1]) + (bull ? " ▲" : " ▼") + rules +
                      "\nblock colour" + (oppositeOK ? ok : bad) +
                      "\nlast opposite candle" + (lastOpp ? ok : bad + (na(src) ? "" : " (" + f_hm(time[src]) + ")")) +
                      "\nsession" + (sesOK ? ok : bad) +
@@ -1044,7 +1095,7 @@ if explainOn and exLine != "" and array.indexof(exTimes, exT) == -1
     array.push(exLines, exLine)
 var table exTable = table.new(position.bottom_left, 8, 2, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1, border_color=color.silver, border_width=1)
 if barstate.islast and explainOn
-    table.cell(exTable, 0, 0, explainTf + "m block candle " + f_hm(explainTime) + ": each next candle tested as the impulse (needed value in brackets)",
+    table.cell(exTable, 0, 0, explainTf + "m block candle " + f_hm(explainTime) + ": each next candle tested as the impulse / break candle (needed value in brackets)",
          text_color=color.black, text_size=size.small, text_halign=text.align_left)
     table.merge_cells(exTable, 0, 0, 7, 0)
     if array.size(exLines) == 0
