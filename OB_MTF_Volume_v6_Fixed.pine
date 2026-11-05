@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.3 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.4 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -10,8 +10,11 @@ indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.3 Any TF]", overlay=true, m
 // chart caught between two touches).
 // - A late-arriving record is back-checked against a buffer of recent 5m candles.
 // - A zone is never drawn before its blocks are actually confirmed.
-// - If a 30m+15m zone appears for a 15m block that already had a
-//   15m+10m+5m zone, the fallback zone is replaced by the 30m+15m zone.
+// - v6.4: a 15m block that ever paired with a 30m block never keeps a
+//   15m+10m+5m zone, even if that 30m block was touched afterwards (v6.3 decided
+//   this by timing, so 10m and 15m charts could disagree).
+// - v6.4: the volume filter checks the impulse candle and the candles before it;
+//   the candle after the impulse no longer counts (v6.0-v6.3 counted it).
 //
 // Untouched rule (v6.2): before confirmation, once a candle closes outside the
 // block, any later wick inside it kills the block. After confirmation, the first
@@ -91,7 +94,10 @@ f_scanOB() =>
         bullImpulse := bullImpulse and low > high[2]
         bearImpulse := bearImpulse and high < low[2]
 
-    bool volumePass = not na(avgVol[2]) and not na(volPeak) and volPeak >= avgVol[2] * volMultiplier
+    // Volume: the highest volume of the impulse candle and the candles just before
+    // it (bars [1]..[window]) against the average of the bars before the impulse.
+    // The candle AFTER the impulse is not counted.
+    bool volumePass = not na(avgVol[2]) and not na(volPeak[1]) and volPeak[1] >= avgVol[2] * volMultiplier
 
     int src = na
     int dir = 0
@@ -456,7 +462,12 @@ int newFallback = 0
 // Primary 30m + 15m.
 if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
     for k = 0 to array.size(times30) - 1
-        if f_aliveNow(hits30, impulses30, 1800, k)
+        bool alive30 = f_aliveNow(hits30, impulses30, 1800, k)
+        int rawEnd30 = f_windowEnd(hits30, impulses30, 1800, k)
+        int end30 = math.min(rawEnd30, knownUntil)
+        // A 30m block whose window ended long ago cannot get new partners (records
+        // arrive at most one 30m or one chart candle late), so skip it to save time.
+        if array.get(checks30, k) < end30 and rawEnd30 + math.max(3600, 2 * chartSec) * 1000 >= knownUntil
             int dir30 = array.get(directions30, k)
             float low30 = array.get(bottoms30, k)
             float high30 = array.get(tops30, k)
@@ -467,13 +478,18 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
             for j = 0 to array.size(times15) - 1
                 if array.get(directions15, j) == dir30 and f_near(low30, high30, array.get(bottoms15, j), array.get(tops15, j), allowedGap)
                     int startPair = math.max(start30, array.get(checks15, j))
-                    int endPair = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+                    int endPair = math.min(f_windowEnd(hits15, impulses15, 900, j), end30)
                     if startPair < endPair
                         bool strongVolume = array.get(volumes30, k) and array.get(volumes15, j)
-                        // The 30m zone supersedes a 15m+10m+5m zone built on the same 15m block.
-                        f_removeZoneByKey("F|" + str.tostring(array.get(times15, j)))
+                        // A 15m block that ever paired with a 30m block never gets a
+                        // 15m+10m+5m zone (even if the 30m block was touched later),
+                        // so every chart timeframe ends with the same result.
+                        string fId = "F|" + str.tostring(array.get(times15, j))
+                        f_removeZoneByKey(fId)
+                        if not f_hasId(drawnIds, fId)
+                            array.push(drawnIds, fId)
                         int zIdx = f_indexOf(zoneKeys, zoneId)
-                        if zIdx == -1 and not f_hasId(drawnIds, zoneId)
+                        if alive30 and zIdx == -1 and not f_hasId(drawnIds, zoneId)
                             box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
                                  bgcolor=color.new(base, strongVolume ? strongOpacity : weakOpacity), border_color=color.new(base, strongVolume ? 10 : 50), border_width=strongVolume ? 2 : 1,
                                  text=strongVolume ? "30m+15m · VOL OK" : "30m+15m · LOW VOL", text_color=color.new(base, 0), text_size=size.small,
@@ -486,7 +502,7 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                             array.push(zoneStrong, strongVolume)
                             array.push(drawnIds, zoneId)
                             newPrimary += 1
-                        else if zIdx >= 0 and strongVolume and not array.get(zoneStrong, zIdx)
+                        else if alive30 and zIdx >= 0 and strongVolume and not array.get(zoneStrong, zIdx)
                             box ub = array.get(zoneBoxes, zIdx)
                             box.set_bgcolor(ub, color.new(base, strongOpacity))
                             box.set_border_color(ub, color.new(base, 10))
@@ -505,15 +521,8 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
             int start15 = array.get(checks15, j)
             int end15 = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
 
-            // Skip if an untouched 30m block pairs with this 15m block (primary wins).
-            bool has30 = false
-            if array.size(times30) > 0
-                for k = 0 to array.size(times30) - 1
-                    if not has30 and f_aliveNow(hits30, impulses30, 1800, k) and array.get(directions30, k) == dir15 and f_near(array.get(bottoms30, k), array.get(tops30, k), low15, high15, allowedGap) and math.max(start15, array.get(checks30, k)) < end15
-                        has30 := true
-
             bool found = false
-            if not has30
+            if start15 < end15
                 for a = 0 to array.size(times10) - 1
                     if not found and array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
                         int s2 = math.max(start15, array.get(checks10, a))
