@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.37", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.38", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -697,6 +697,7 @@ var array<float> zoneEntryTops = array.new<float>()
 var array<float> zoneEntryBottoms = array.new<float>()
 var array<int> zoneEntryChecks = array.new<int>()
 var array<int> zoneEntrySrcs = array.new<int>()
+var array<int> zoneEntryTfs = array.new<int>()
 var array<bool> zoneEntryHit = array.new<bool>()
 var array<label> zoneLabels = array.new<label>()
 var array<string> zoneTexts = array.new<string>()
@@ -710,7 +711,7 @@ f_refreshLabel(int z) =>
         string txt = array.get(zoneTexts, z)
         if not na(array.get(zoneEntryTops, z))
             float ep = array.get(zoneDirs, z) == 1 ? array.get(zoneEntryTops, z) : array.get(zoneEntryBottoms, z)
-            txt := txt + "   E " + str.tostring(ep, format.mintick) + (array.get(zoneEntryHit, z) ? " ✓" : "")
+            txt := txt + (array.get(zoneEntryTfs, z) == 5 ? "   E5 " : "   E ") + str.tostring(ep, format.mintick) + (array.get(zoneEntryHit, z) ? " ✓" : "")
         label.set_text(lb, txt + array.get(zoneInfos, z))
 
 // Bookkeeping for a zone that was just pushed (label + entry slots).
@@ -730,6 +731,7 @@ f_pushZoneMeta(int dir, int left, string txt, string info) =>
     array.push(zoneEntryBottoms, na)
     array.push(zoneEntryChecks, na)
     array.push(zoneEntrySrcs, na)
+    array.push(zoneEntryTfs, na)
     array.push(zoneEntryHit, false)
 
 // Best untouched 1m block for zone z among 1m records [fromIdx .. last]:
@@ -737,15 +739,15 @@ f_pushZoneMeta(int dir, int left, string txt, string info) =>
 // distance of the zone.
 //   Extreme: the highest block for a sell zone, the lowest for a buy zone.
 //   Closest: the nearest block; on a tie, the one price reaches first.
-// Returns the index of a 1m block that is better than the zone's current entry
-// (or than nothing, when it has none), or na.
-f_findEntry(int z, int fromIdx) =>
+// Returns the index of a block (1m, or 5m as fallback) that is better than the
+// zone's current entry (or than nothing, when it has none), or na.
+f_findEntry(array<int> eTimes, array<int> eDirs, array<int> eHits, array<float> eBots, array<float> eTops, int z, int fromIdx) =>
     int best = na
     float zTop = array.get(zoneTops, z)
     float zBot = array.get(zoneBottoms, z)
     int zDir = array.get(zoneDirs, z)
     int zLeft = array.get(zoneLefts, z)
-    // The 1m block must belong to the move that built the zone: its source candle
+    // The entry block must belong to the move that built the zone: its source candle
     // lies between the zone's source candle and the confirmation of the zone's
     // main block. Blocks from later, unrelated moves are never used.
     int zConfirm = array.get(zoneCheckFroms, z)
@@ -755,14 +757,14 @@ f_findEntry(int z, int fromIdx) =>
     float bestGap = na(bestT) ? na : math.max(0.0, math.max(bestB, zBot) - math.min(bestT, zTop))
     float maxGap = atr30 * entryATR
     int startIdx = math.max(fromIdx, 0)
-    if array.size(times1) > startIdx and not na(maxGap)
-        for i = startIdx to array.size(times1) - 1
+    if array.size(eTimes) > startIdx and not na(maxGap)
+        for i = startIdx to array.size(eTimes) - 1
             // Untouched at the moment the zone was confirmed (not "now"), so every chart
             // timeframe picks the same block whenever it happens to build the zone.
-            int hit1 = array.get(hits1, i)
-            if array.get(directions1, i) == zDir and (na(hit1) or hit1 > zConfirm) and array.get(times1, i) >= zLeft and array.get(times1, i) <= zConfirm
-                float b1 = array.get(bottoms1, i)
-                float t1 = array.get(tops1, i)
+            int hitE = array.get(eHits, i)
+            if array.get(eDirs, i) == zDir and (na(hitE) or hitE > zConfirm) and array.get(eTimes, i) >= zLeft and array.get(eTimes, i) <= zConfirm
+                float b1 = array.get(eBots, i)
+                float t1 = array.get(eTops, i)
                 float gap = math.max(0.0, math.max(b1, zBot) - math.min(t1, zTop))
                 if gap <= maxGap
                     bool better = na(bestT) ? true :
@@ -775,21 +777,21 @@ f_findEntry(int z, int fromIdx) =>
                         bestGap := gap
     best
 
-f_setEntry(int z, int i) =>
-    int zDir = array.get(zoneDirs, z)
-    float t1 = array.get(tops1, i)
-    float b1 = array.get(bottoms1, i)
+f_setEntry(array<int> eTimes, array<int> eChecks, array<float> eBots, array<float> eTops, int z, int i, int tfMin) =>
+    float t1 = array.get(eTops, i)
+    float b1 = array.get(eBots, i)
     color ec = entryColor
     box old = array.get(zoneEntryBoxes, z)
     if not na(old)
         box.delete(old)
-    box eb = box.new(left=array.get(times1, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
+    box eb = box.new(left=array.get(eTimes, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
          bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2)
     array.set(zoneEntryBoxes, z, eb)
     array.set(zoneEntryTops, z, t1)
     array.set(zoneEntryBottoms, z, b1)
-    array.set(zoneEntryChecks, z, array.get(checks1, i))
-    array.set(zoneEntrySrcs, z, array.get(times1, i))
+    array.set(zoneEntryChecks, z, array.get(eChecks, i))
+    array.set(zoneEntrySrcs, z, array.get(eTimes, i))
+    array.set(zoneEntryTfs, z, tfMin)
     f_refreshLabel(z)
 
 f_removeZone(int z) =>
@@ -811,6 +813,7 @@ f_removeZone(int z) =>
     array.remove(zoneEntryBottoms, z)
     array.remove(zoneEntryChecks, z)
     array.remove(zoneEntrySrcs, z)
+    array.remove(zoneEntryTfs, z)
     array.remove(zoneEntryHit, z)
     label lb = array.get(zoneLabels, z)
     if not na(lb)
@@ -818,6 +821,13 @@ f_removeZone(int z) =>
     array.remove(zoneLabels, z)
     array.remove(zoneTexts, z)
     array.remove(zoneInfos, z)
+
+// Zone used up: its entry was already reached. Remember it so it is never rebuilt.
+f_useUpZone(int z) =>
+    string usedKey = array.get(zoneKeys, z)
+    if not f_hasId(drawnIds, usedKey)
+        array.push(drawnIds, usedKey)
+    f_removeZone(z)
 
 f_removeZoneByKey(string key) =>
     int idx = f_indexOf(zoneKeys, key)
@@ -1009,20 +1019,31 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
 // If the chosen block was already reached after the zone was confirmed (a slower
 // chart builds the zone later), the zone is used up: it is removed like on a
 // faster chart, where it would have been drawn and then removed on that touch.
+// 5m fallback: TradingView only gives a limited history of 1m data inside a
+// chart. When the 1m data on this chart starts after the zone's move, the entry is
+// taken from the 5m blocks of that move instead (same rules), shown as "E5".
 if showEntry and array.size(zoneBoxes) > 0
     for z = array.size(zoneBoxes) - 1 to 0
         if not array.get(zoneEntryHit, z)
-            int fromIdx = array.get(zoneCreated, z) == time ? 0 : array.size(times1) - added1
-            if fromIdx < array.size(times1)
-                int e = f_findEntry(z, fromIdx)
-                if not na(e)
-                    if not na(array.get(hits1, e))
-                        string usedKey = array.get(zoneKeys, z)
-                        if not f_hasId(drawnIds, usedKey)
-                            array.push(drawnIds, usedKey)
-                        f_removeZone(z)
-                    else
-                        f_setEntry(z, e)
+            bool isNew = array.get(zoneCreated, z) == time
+            bool no1mData = na(first1Seen) or first1Seen > array.get(zoneLefts, z)
+            if no1mData
+                if isNew
+                    int e5 = f_findEntry(times5, directions5, hits5, bottoms5, tops5, z, 0)
+                    if not na(e5)
+                        if not na(array.get(hits5, e5))
+                            f_useUpZone(z)
+                        else
+                            f_setEntry(times5, checks5, bottoms5, tops5, z, e5, 5)
+            else
+                int fromIdx = isNew ? 0 : array.size(times1) - added1
+                if fromIdx < array.size(times1)
+                    int e = f_findEntry(times1, directions1, hits1, bottoms1, tops1, z, fromIdx)
+                    if not na(e)
+                        if not na(array.get(hits1, e))
+                            f_useUpZone(z)
+                        else
+                            f_setEntry(times1, checks1, bottoms1, tops1, z, e, 1)
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
 while array.size(zoneBoxes) > maxZones
@@ -1089,7 +1110,7 @@ if barstate.islast and array.size(zoneLabels) > 0
             if showZoneInfo
                 string diag = ""
                 if not na(array.get(zoneEntrySrcs, z))
-                    diag := "\n1m entry block " + str.format_time(array.get(zoneEntrySrcs, z), "dd/MM HH:mm", infoTz)
+                    diag := "\n" + str.tostring(array.get(zoneEntryTfs, z)) + "m entry block " + str.format_time(array.get(zoneEntrySrcs, z), "dd/MM HH:mm", infoTz)
                 else
                     int zDir = array.get(zoneDirs, z)
                     int zLeft = array.get(zoneLefts, z)
