@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.28", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.29", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -627,13 +627,11 @@ if array.size(rawBoxes) > 0
 
 // -----------------------------------------------------------------------------
 // Zones
-// Primary: an untouched 30m OB whose validity window overlapped the windows of a
-// nearby same-direction 15m OB and 5m OB (one box per 30m OB). If a 10m OB was
-// valid at the same moment too, the zone is SUPER STRONG. Volume changes opacity.
-// Fallback: an untouched 15m OB with no such 30m partner, 15m volume OK, and a
-// nearby 10m AND 5m OB whose windows overlapped its window at the same time.
-// A window only counts once it is confirmed by candles already seen
-// (start < knownUntil), so nothing is drawn ahead of time.
+// Primary: an untouched 30m OB with a 15m OB and a 5m OB from the same move
+// (see f_partner); one box per 30m OB. With a 10m OB from the same move as well,
+// the zone is SUPER STRONG. Volume changes opacity.
+// Fallback: an untouched 15m OB with no such 30m zone over it, 15m volume OK, and
+// a 10m AND a 5m OB from the same move.
 // -----------------------------------------------------------------------------
 var array<box> zoneBoxes = array.new<box>()
 var array<string> zoneKeys = array.new<string>()
@@ -800,130 +798,100 @@ int newSuper = 0
 // 15m blocks that currently pair with an untouched 30m block (the 30m zone wins).
 array<bool> has30Now = array.new<bool>(array.size(times15), false)
 
-// Primary 30m + 15m + 5m, and SUPER STRONG when a 10m block is valid at the same
-// time as well (30m + 15m + 10m + 5m). Every block must be same direction, close
-// to the 30m block in price, and untouched during one common moment.
-if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0 and array.size(times5) > 0
+// Confluence rule: a smaller-timeframe block confirms a bigger one when it belongs
+// to the SAME MOVE: same direction, close in price, and its source candle lies
+// between (the big block's source candle - one big candle) and the moment the big
+// block was confirmed. A later touch of the smaller block does not matter; only
+// the big block (the drawn zone) has to stay untouched.
+f_partner(array<int> pTimes, array<int> pDirs, array<float> pBots, array<float> pTops, int dir, float lo, float hi, int fromT, int toT) =>
+    int found = na
+    if array.size(pTimes) > 0
+        for i = array.size(pTimes) - 1 to 0
+            int pt = array.get(pTimes, i)
+            if pt >= fromT and pt <= toT and array.get(pDirs, i) == dir and f_near(lo, hi, array.get(pBots, i), array.get(pTops, i), allowedGap)
+                found := i
+                break
+    found
+
+// Primary 30m + 15m + 5m; SUPER STRONG when a 10m block from the same move exists too.
+if array.size(times30) > 0 and array.size(times15) > 0 and array.size(times5) > 0
     for k = 0 to array.size(times30) - 1
-        int end30 = math.min(f_windowEnd(hits30, impulses30, 1800, k), knownUntil)
-        if f_aliveNow(hits30, impulses30, 1800, k) and array.get(checks30, k) < end30
+        if f_aliveNow(hits30, impulses30, 1800, k)
             int dir30 = array.get(directions30, k)
             float low30 = array.get(bottoms30, k)
             float high30 = array.get(tops30, k)
             int start30 = array.get(checks30, k)
             int src30 = array.get(times30, k)
+            int fromT = src30 - 1800 * 1000
             string zoneId = "P|" + str.tostring(src30)
             color base = dir30 == 1 ? color.teal : color.red
-            for j = 0 to array.size(times15) - 1
-                if array.get(directions15, j) == dir30 and f_near(low30, high30, array.get(bottoms15, j), array.get(tops15, j), allowedGap)
-                    int s1 = math.max(start30, array.get(checks15, j))
-                    int e1 = math.min(f_windowEnd(hits15, impulses15, 900, j), end30)
-                    if s1 < e1
-                        // 5m blocks valid inside the 30m+15m window (at least one is required).
-                        array<int> cand5 = array.new<int>()
-                        for b = 0 to array.size(times5) - 1
-                            if array.get(directions5, b) == dir30 and f_near(low30, high30, array.get(bottoms5, b), array.get(tops5, b), allowedGap)
-                                if math.max(s1, array.get(checks5, b)) < math.min(e1, f_windowEnd(hits5, impulses5, 300, b))
-                                    array.push(cand5, b)
-                        int m5 = array.size(cand5) > 0 ? array.get(cand5, 0) : na
-                        // A 10m block AND one of those 5m blocks valid at the same moment -> SUPER STRONG.
-                        // Skipped when this zone is already SUPER STRONG with the best volume.
-                        int zPrev = f_indexOf(zoneKeys, zoneId)
-                        bool alreadyBest = zPrev >= 0 and array.get(zoneGrade, zPrev) >= 12
-                        int sup10 = na
-                        int sup5 = na
-                        if not na(m5) and not alreadyBest and array.size(times10) > 0
-                            for a = 0 to array.size(times10) - 1
-                                if array.get(directions10, a) == dir30 and f_near(low30, high30, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
-                                    int s3 = math.max(s1, array.get(checks10, a))
-                                    int e3 = math.min(e1, f_windowEnd(hits10, impulses10, 600, a))
-                                    if s3 < e3
-                                        for c = 0 to array.size(cand5) - 1
-                                            int b5 = array.get(cand5, c)
-                                            if math.max(s3, array.get(checks5, b5)) < math.min(e3, f_windowEnd(hits5, impulses5, 300, b5))
-                                                sup10 := a
-                                                sup5 := b5
-                                                break
-                                if not na(sup10)
-                                    break
-                        if not na(m5)
-                            bool isSuper = not na(sup10)
-                            int use5 = isSuper ? sup5 : m5
-                            // Volume grade = the weaker of the 30m and 15m volumes.
-                            float pairRatio = math.min(nz(array.get(volumes30, k)), nz(array.get(volumes15, j)))
-                            int pairGrade = math.min(f_grade(array.get(volumes30, k)), f_grade(array.get(volumes15, j)))
-                            int score = (isSuper ? 10 : 0) + pairGrade
-                            string info = showZoneInfo ? "\n30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) + (isSuper ? " · 10m " + f_hm(array.get(times10, sup10)) : "") + " · 5m " + f_hm(array.get(times5, use5)) : ""
-                            string pairText = (isSuper ? "★ 30·15·10·5  " : "30·15·5  ") + f_volShort(pairGrade, pairRatio)
-                            int fillT = isSuper ? superOpacity : f_fillT(pairGrade)
-                            int borderT = isSuper ? 0 : f_borderT(pairGrade)
-                            int borderW = isSuper ? 4 : f_borderW(pairGrade)
-                            // While this 30m zone exists it replaces a 15m+10m+5m zone on a
-                            // 15m block that overlaps it in price. If the 30m block is touched
-                            // later, that 15m zone may come back.
-                            if math.max(low30, array.get(bottoms15, j)) <= math.min(high30, array.get(tops15, j))
-                                array.set(has30Now, j, true)
-                                f_removeZoneByKey("F|" + str.tostring(array.get(times15, j)))
-                            int zIdx = f_indexOf(zoneKeys, zoneId)
-                            if zIdx == -1 and not f_hasId(drawnIds, zoneId)
-                                box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
-                                     bgcolor=color.new(base, fillT), border_color=color.new(base, borderT), border_width=borderW)
-                                array.push(zoneBoxes, newBox)
-                                array.push(zoneKeys, zoneId)
-                                array.push(zoneTops, high30)
-                                array.push(zoneBottoms, low30)
-                                array.push(zoneCheckFroms, start30)
-                                array.push(zoneGrade, score)
-                                f_pushZoneMeta(dir30, src30, pairText, info)
-                                array.push(drawnIds, zoneId)
-                                newPrimary += 1
-                                if isSuper
-                                    newSuper += 1
-                            else if zIdx >= 0 and score > array.get(zoneGrade, zIdx)
-                                // Upgrade the box (to SUPER STRONG and/or better volume).
-                                box ub = array.get(zoneBoxes, zIdx)
-                                box.set_bgcolor(ub, color.new(base, fillT))
-                                box.set_border_color(ub, color.new(base, borderT))
-                                box.set_border_width(ub, borderW)
-                                array.set(zoneTexts, zIdx, pairText)
-                                array.set(zoneInfos, zIdx, info)
-                                f_refreshLabel(zIdx)
-                                if isSuper and array.get(zoneGrade, zIdx) < 10
-                                    newSuper += 1
-                                array.set(zoneGrade, zIdx, score)
+            int m5 = f_partner(times5, directions5, bottoms5, tops5, dir30, low30, high30, fromT, start30)
+            if not na(m5)
+                int m10 = f_partner(times10, directions10, bottoms10, tops10, dir30, low30, high30, fromT, start30)
+                bool isSuper = not na(m10)
+                for j = 0 to array.size(times15) - 1
+                    int t15 = array.get(times15, j)
+                    if t15 >= fromT and t15 <= start30 and array.get(directions15, j) == dir30 and f_near(low30, high30, array.get(bottoms15, j), array.get(tops15, j), allowedGap)
+                        // Volume grade = the weaker of the 30m and 15m volumes.
+                        float pairRatio = math.min(nz(array.get(volumes30, k)), nz(array.get(volumes15, j)))
+                        int pairGrade = math.min(f_grade(array.get(volumes30, k)), f_grade(array.get(volumes15, j)))
+                        int score = (isSuper ? 10 : 0) + pairGrade
+                        string info = showZoneInfo ? "\n30m " + f_hm(src30) + " · 15m " + f_hm(t15) + (isSuper ? " · 10m " + f_hm(array.get(times10, m10)) : "") + " · 5m " + f_hm(array.get(times5, m5)) : ""
+                        string pairText = (isSuper ? "★ 30·15·10·5  " : "30·15·5  ") + f_volShort(pairGrade, pairRatio)
+                        int fillT = isSuper ? superOpacity : f_fillT(pairGrade)
+                        int borderT = isSuper ? 0 : f_borderT(pairGrade)
+                        int borderW = isSuper ? 4 : f_borderW(pairGrade)
+                        // While this 30m zone exists it replaces a 15m+10m+5m zone on a
+                        // 15m block that overlaps it in price.
+                        if math.max(low30, array.get(bottoms15, j)) <= math.min(high30, array.get(tops15, j))
+                            array.set(has30Now, j, true)
+                            f_removeZoneByKey("F|" + str.tostring(t15))
+                        int zIdx = f_indexOf(zoneKeys, zoneId)
+                        if zIdx == -1 and not f_hasId(drawnIds, zoneId)
+                            box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
+                                 bgcolor=color.new(base, fillT), border_color=color.new(base, borderT), border_width=borderW)
+                            array.push(zoneBoxes, newBox)
+                            array.push(zoneKeys, zoneId)
+                            array.push(zoneTops, high30)
+                            array.push(zoneBottoms, low30)
+                            array.push(zoneCheckFroms, start30)
+                            array.push(zoneGrade, score)
+                            f_pushZoneMeta(dir30, src30, pairText, info)
+                            array.push(drawnIds, zoneId)
+                            newPrimary += 1
+                            if isSuper
+                                newSuper += 1
+                        else if zIdx >= 0 and score > array.get(zoneGrade, zIdx)
+                            // Upgrade the box (to SUPER STRONG and/or better volume).
+                            box ub = array.get(zoneBoxes, zIdx)
+                            box.set_bgcolor(ub, color.new(base, fillT))
+                            box.set_border_color(ub, color.new(base, borderT))
+                            box.set_border_width(ub, borderW)
+                            array.set(zoneTexts, zIdx, pairText)
+                            array.set(zoneInfos, zIdx, info)
+                            f_refreshLabel(zIdx)
+                            if isSuper and array.get(zoneGrade, zIdx) < 10
+                                newSuper += 1
+                            array.set(zoneGrade, zIdx, score)
 
-// Fallback 15m + 10m + 5m.
-if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 and array.size(times5) > 0
+// Fallback 15m + 10m + 5m (10m and 5m blocks from the same move as the 15m block).
+if array.size(times15) > 0 and array.size(times10) > 0 and array.size(times5) > 0
     for j = 0 to array.size(times15) - 1
-        string tripleId = "F|" + str.tostring(array.get(times15, j))
+        int t15 = array.get(times15, j)
+        string tripleId = "F|" + str.tostring(t15)
         if f_aliveNow(hits15, impulses15, 900, j) and f_grade(array.get(volumes15, j)) >= 1 and not array.get(has30Now, j) and f_indexOf(zoneKeys, tripleId) == -1 and not f_hasId(drawnIds, tripleId)
             int dir15 = array.get(directions15, j)
             float low15 = array.get(bottoms15, j)
             float high15 = array.get(tops15, j)
             int start15 = array.get(checks15, j)
-            int end15 = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
-
-            bool found = false
-            int match10 = na
-            int match5 = na
-            if start15 < end15
-                for a = 0 to array.size(times10) - 1
-                    if not found and array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
-                        int s2 = math.max(start15, array.get(checks10, a))
-                        int e2 = math.min(end15, f_windowEnd(hits10, impulses10, 600, a))
-                        if s2 < e2
-                            for b = 0 to array.size(times5) - 1
-                                if not found and array.get(directions5, b) == dir15 and f_near(low15, high15, array.get(bottoms5, b), array.get(tops5, b), allowedGap)
-                                    if math.max(s2, array.get(checks5, b)) < math.min(e2, f_windowEnd(hits5, impulses5, 300, b))
-                                        found := true
-                                        match10 := a
-                                        match5 := b
-
-            if found
+            int fromT = t15 - 900 * 1000
+            int match10 = f_partner(times10, directions10, bottoms10, tops10, dir15, low15, high15, fromT, start15)
+            int match5 = na(match10) ? na : f_partner(times5, directions5, bottoms5, tops5, dir15, low15, high15, fromT, start15)
+            if not na(match10) and not na(match5)
                 color base = dir15 == 1 ? color.teal : color.red
                 float r15 = array.get(volumes15, j)
                 int g15 = f_grade(r15)
-                box newBox = box.new(left=array.get(times15, j), top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
+                box newBox = box.new(left=t15, top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
                      bgcolor=color.new(base, f_fillT(g15)), border_color=color.new(base, f_borderT(g15)), border_width=f_borderW(g15))
                 array.push(zoneBoxes, newBox)
                 array.push(zoneKeys, tripleId)
@@ -931,8 +899,8 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                 array.push(zoneBottoms, low15)
                 array.push(zoneCheckFroms, start15)
                 array.push(zoneGrade, g15)
-                string info15 = showZoneInfo ? "\n15m " + f_hm(array.get(times15, j)) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""
-                f_pushZoneMeta(dir15, array.get(times15, j), "15·10·5  " + f_volShort(g15, r15), info15)
+                string info15 = showZoneInfo ? "\n15m " + f_hm(t15) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""
+                f_pushZoneMeta(dir15, t15, "15·10·5  " + f_volShort(g15, r15), info15)
                 newFallback += 1
 
 // 1m entries (only 1m blocks from the move that built the zone, see f_findEntry).
@@ -979,25 +947,9 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
                 float low15 = array.get(bottoms15, j)
                 float high15 = array.get(tops15, j)
                 int start15 = array.get(checks15, j)
-                int end15 = na(knownUntil) ? start15 : math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
-                // Count same-direction 10m / 5m blocks that are close enough in price,
-                // and how many of them were untouched at some time inside the 15m window.
-                int near10 = 0
-                int ok10 = 0
-                if array.size(times10) > 0
-                    for a = 0 to array.size(times10) - 1
-                        if array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
-                            near10 += 1
-                            if math.max(start15, array.get(checks10, a)) < math.min(end15, f_windowEnd(hits10, impulses10, 600, a))
-                                ok10 += 1
-                int near5 = 0
-                int ok5 = 0
-                if array.size(times5) > 0
-                    for b = 0 to array.size(times5) - 1
-                        if array.get(directions5, b) == dir15 and f_near(low15, high15, array.get(bottoms5, b), array.get(tops5, b), allowedGap)
-                            near5 += 1
-                            if math.max(start15, array.get(checks5, b)) < math.min(end15, f_windowEnd(hits5, impulses5, 300, b))
-                                ok5 += 1
+                int fromT = src - 900 * 1000
+                int p10 = f_partner(times10, directions10, bottoms10, tops10, dir15, low15, high15, fromT, start15)
+                int p5 = f_partner(times5, directions5, bottoms5, tops5, dir15, low15, high15, fromT, start15)
                 string gapTxt = " (max gap " + str.tostring(allowedGap, "#.##") + ")"
                 float rj = array.get(volumes15, j)
                 int gj = f_grade(rj)
@@ -1006,11 +958,9 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
                      gj == 0 ? v + " -> no zone" :
                      array.get(has30Now, j) ? v + " -> part of a 30m zone" :
                      f_indexOf(zoneKeys, "F|" + str.tostring(src)) >= 0 ? v + " -> zone" :
-                     near10 == 0 ? v + " -> no 10m block close enough" + gapTxt :
-                     ok10 == 0 ? v + " -> 10m block touched before this 15m block was confirmed" :
-                     near5 == 0 ? v + " -> no 5m block close enough" + gapTxt :
-                     ok5 == 0 ? v + " -> 5m block touched before this 15m block was confirmed" :
-                     v + " -> 10m and 5m blocks never valid at the same time"
+                     na(p10) ? v + " -> no 10m block from the same move close enough" + gapTxt :
+                     na(p5) ? v + " -> no 5m block from the same move close enough" + gapTxt :
+                     v + " -> zone removed (its 1m entry was reached)"
                 box.set_text(array.get(rawBoxes, r), PAD + "15m " + f_hm(src) + " · " + why)
 
 alertcondition(newPrimary > 0, "New 30m + 15m + 5m OB zone", "A new 30m Order Block zone with 15m and 5m confirmation was drawn on {{ticker}}.")
