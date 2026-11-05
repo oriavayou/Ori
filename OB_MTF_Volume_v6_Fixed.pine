@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.25", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.26", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -633,7 +633,10 @@ f_findEntry(int z, int fromIdx) =>
     int startIdx = math.max(fromIdx, 0)
     if array.size(times1) > startIdx and not na(maxGap)
         for i = startIdx to array.size(times1) - 1
-            if array.get(directions1, i) == zDir and na(array.get(hits1, i)) and array.get(times1, i) >= zLeft and array.get(times1, i) <= zConfirm
+            // Untouched at the moment the zone was confirmed (not "now"), so every chart
+            // timeframe picks the same block whenever it happens to build the zone.
+            int hit1 = array.get(hits1, i)
+            if array.get(directions1, i) == zDir and (na(hit1) or hit1 > zConfirm) and array.get(times1, i) >= zLeft and array.get(times1, i) <= zConfirm
                 float b1 = array.get(bottoms1, i)
                 float t1 = array.get(tops1, i)
                 float gap = math.max(0.0, math.max(b1, zBot) - math.min(t1, zTop))
@@ -863,14 +866,23 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
 // when it is better (more extreme, or closer in "Closest" mode). So the entry is
 // always the best block available, whatever the chart timeframe; once price has
 // reached it, it stays fixed.
+// If the chosen block was already reached after the zone was confirmed (a slower
+// chart builds the zone later), the zone is used up: it is removed like on a
+// faster chart, where it would have been drawn and then removed on that touch.
 if showEntry and array.size(zoneBoxes) > 0
-    for z = 0 to array.size(zoneBoxes) - 1
+    for z = array.size(zoneBoxes) - 1 to 0
         if not array.get(zoneEntryHit, z)
             int fromIdx = array.get(zoneCreated, z) == time ? 0 : array.size(times1) - added1
             if fromIdx < array.size(times1)
                 int e = f_findEntry(z, fromIdx)
                 if not na(e)
-                    f_setEntry(z, e)
+                    if not na(array.get(hits1, e))
+                        string usedKey = array.get(zoneKeys, z)
+                        if not f_hasId(drawnIds, usedKey)
+                            array.push(drawnIds, usedKey)
+                        f_removeZone(z)
+                    else
+                        f_setEntry(z, e)
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
 while array.size(zoneBoxes) > maxZones
