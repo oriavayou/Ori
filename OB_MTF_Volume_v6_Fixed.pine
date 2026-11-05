@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.16", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.17", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -14,6 +14,11 @@ indicator("MTF Order Blocks v6.16", shorttitle="MTF OB", overlay=true, max_boxes
 //   with its 15m block (v6.4 hid it forever, so a 15m block whose 30m partner
 //   was touched got no zone at all).
 // - v6.7: debug boxes show only untouched blocks, with their volume status.
+// - v6.17: no text inside the boxes. One short label per zone in the empty space
+//   right of the last candle, spread apart so labels never overlap:
+//     "★ 30·15·10·5  VOL+ x2.3   E 4093.59"   ★ = SUPER STRONG
+//     "30·15·5  VOL x1.7   E ..."   "15·10·5  LOW x1.2"
+//   VOL+ = very strong volume, VOL = good, LOW = low. E = 1m entry price (✓ = reached).
 // - v6.16: every zone gets a 1m ENTRY block: the closest untouched same-direction
 //   1m OB formed since the zone's source candle, within "Max distance" of the zone
 //   (it does not have to overlap the zone). Blue = buy entry, orange = sell entry.
@@ -78,11 +83,12 @@ int superOpacity = input.int(40, "SUPER STRONG zone transparency (30m+15m+10m+5m
 int veryStrongOpacity = input.int(55, "Very strong volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 int strongOpacity = input.int(70, "Good volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 int weakOpacity = input.int(86, "Weak-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
-string labelSizeInput = input.string("Small", "Zone text size", options=["Small", "Normal", "Large"], group=GROUP_DRAW)
+string labelMode = input.string("Short", "Zone labels (at the right of the chart)", options=["Short", "Off"], group=GROUP_DRAW)
+string labelSizeInput = input.string("Small", "Zone text size", options=["Tiny", "Small", "Normal", "Large"], group=GROUP_DRAW)
 bool autoTextColor = input.bool(true, "Zone text: automatic colour (black on light chart, white on dark)", group=GROUP_DRAW)
 color customTextColor = input.color(color.black, "Zone text colour (when automatic is off)", group=GROUP_DRAW)
 
-string zoneTextSize = labelSizeInput == "Small" ? size.small : labelSizeInput == "Large" ? size.large : size.normal
+string zoneTextSize = labelSizeInput == "Tiny" ? size.tiny : labelSizeInput == "Small" ? size.small : labelSizeInput == "Large" ? size.large : size.normal
 color zoneTextColor = autoTextColor ? chart.fg_color : customTextColor
 // Leading spaces keep the first letters clear of the source candle at the box's left edge.
 string PAD = "   "
@@ -235,6 +241,10 @@ f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, ar
 // Volume grade from the ratio (impulse peak / average): 2 = very strong, 1 = good, 0 = low.
 f_grade(float ratio) =>
     na(ratio) ? 0 : ratio >= volStrongMultiplier ? 2 : ratio >= volMultiplier ? 1 : 0
+
+// Short volume tag for the zone labels: VOL+ (very strong), VOL (good), LOW.
+f_volShort(int grade, float ratio) =>
+    (grade == 2 ? "VOL+ " : grade == 1 ? "VOL " : "LOW ") + (na(ratio) ? "" : "x" + str.tostring(ratio, "#.#"))
 
 f_volText(int grade, float ratio) =>
     (grade == 2 ? "VOL STRONG" : grade == 1 ? "VOL OK" : "LOW VOL") + (na(ratio) ? "" : " x" + str.tostring(ratio, "#.#"))
@@ -554,9 +564,30 @@ var array<float> zoneEntryTops = array.new<float>()
 var array<float> zoneEntryBottoms = array.new<float>()
 var array<int> zoneEntryChecks = array.new<int>()
 var array<bool> zoneEntryHit = array.new<bool>()
+var array<label> zoneLabels = array.new<label>()
+var array<string> zoneTexts = array.new<string>()
+var array<string> zoneInfos = array.new<string>()
 
-// Entry bookkeeping for a zone that was just pushed.
-f_pushZoneMeta(int dir, int left) =>
+// One small label per zone, in the empty space right of the last candle:
+// "<blocks> <volume>  E <entry price>" (+ source times when debug info is on).
+f_refreshLabel(int z) =>
+    label lb = array.get(zoneLabels, z)
+    if not na(lb)
+        string txt = array.get(zoneTexts, z)
+        if not na(array.get(zoneEntryBoxes, z))
+            float ep = array.get(zoneDirs, z) == 1 ? array.get(zoneEntryTops, z) : array.get(zoneEntryBottoms, z)
+            txt := txt + "   E " + str.tostring(ep, format.mintick) + (array.get(zoneEntryHit, z) ? " ✓" : "")
+        label.set_text(lb, txt + array.get(zoneInfos, z))
+
+// Bookkeeping for a zone that was just pushed (label + entry slots).
+f_pushZoneMeta(int dir, int left, string txt, string info) =>
+    int last = array.size(zoneTops) - 1
+    float mid = (array.get(zoneTops, last) + array.get(zoneBottoms, last)) / 2
+    label lb = labelMode == "Off" ? label(na) : label.new(bar_index + 2, mid, txt + info, xloc=xloc.bar_index, style=label.style_label_left,
+         color=color.new(color.white, 100), textcolor=zoneTextColor, size=zoneTextSize, textalign=text.align_left)
+    array.push(zoneLabels, lb)
+    array.push(zoneTexts, txt)
+    array.push(zoneInfos, info)
     array.push(zoneDirs, dir)
     array.push(zoneLefts, left)
     array.push(zoneCreated, time)
@@ -592,22 +623,18 @@ f_findEntry(int z, int fromIdx) =>
                         bestGap := gap
     best
 
-f_entryText(int dir, float top, float bottom, bool hit) =>
-    PAD + "ENTRY 1m · " + str.tostring(dir == 1 ? top : bottom, format.mintick) + (hit ? " · HIT" : "")
-
 f_setEntry(int z, int i) =>
     int zDir = array.get(zoneDirs, z)
     float t1 = array.get(tops1, i)
     float b1 = array.get(bottoms1, i)
     color ec = zDir == 1 ? color.blue : color.orange
     box eb = box.new(left=array.get(times1, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
-         bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2,
-         text=f_entryText(zDir, t1, b1, false), text_color=zoneTextColor, text_size=zoneTextSize,
-         text_halign=text.align_right, text_valign=text.align_center)
+         bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2)
     array.set(zoneEntryBoxes, z, eb)
     array.set(zoneEntryTops, z, t1)
     array.set(zoneEntryBottoms, z, b1)
     array.set(zoneEntryChecks, z, array.get(checks1, i))
+    f_refreshLabel(z)
 
 f_removeZone(int z) =>
     box.delete(array.get(zoneBoxes, z))
@@ -628,6 +655,12 @@ f_removeZone(int z) =>
     array.remove(zoneEntryBottoms, z)
     array.remove(zoneEntryChecks, z)
     array.remove(zoneEntryHit, z)
+    label lb = array.get(zoneLabels, z)
+    if not na(lb)
+        label.delete(lb)
+    array.remove(zoneLabels, z)
+    array.remove(zoneTexts, z)
+    array.remove(zoneInfos, z)
 
 f_removeZoneByKey(string key) =>
     int idx = f_indexOf(zoneKeys, key)
@@ -642,7 +675,7 @@ if array.size(zoneBoxes) > 0
         if not na(eb) and not array.get(zoneEntryHit, z)
             if not na(f_firstTouch(curT, curH, curL, array.get(zoneEntryChecks, z), array.get(zoneEntryBottoms, z), array.get(zoneEntryTops, z)))
                 array.set(zoneEntryHit, z, true)
-                box.set_text(eb, f_entryText(array.get(zoneDirs, z), array.get(zoneEntryTops, z), array.get(zoneEntryBottoms, z), true))
+                f_refreshLabel(z)
                 box.set_border_style(eb, line.style_dashed)
                 newEntryHit += 1
 
@@ -711,8 +744,8 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0 an
                             float pairRatio = math.min(nz(array.get(volumes30, k)), nz(array.get(volumes15, j)))
                             int pairGrade = math.min(f_grade(array.get(volumes30, k)), f_grade(array.get(volumes15, j)))
                             int score = (isSuper ? 10 : 0) + pairGrade
-                            string info = showZoneInfo ? "\n" + PAD + "30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) + (isSuper ? " · 10m " + f_hm(array.get(times10, sup10)) : "") + " · 5m " + f_hm(array.get(times5, use5)) : ""
-                            string pairText = PAD + (isSuper ? "SUPER STRONG · 30m+15m+10m+5m" : "30m+15m+5m") + " · " + f_volText(pairGrade, pairRatio) + info
+                            string info = showZoneInfo ? "\n30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) + (isSuper ? " · 10m " + f_hm(array.get(times10, sup10)) : "") + " · 5m " + f_hm(array.get(times5, use5)) : ""
+                            string pairText = (isSuper ? "★ 30·15·10·5  " : "30·15·5  ") + f_volShort(pairGrade, pairRatio)
                             int fillT = isSuper ? superOpacity : f_fillT(pairGrade)
                             int borderT = isSuper ? 0 : f_borderT(pairGrade)
                             int borderW = isSuper ? 4 : f_borderW(pairGrade)
@@ -725,16 +758,14 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0 an
                             int zIdx = f_indexOf(zoneKeys, zoneId)
                             if zIdx == -1 and not f_hasId(drawnIds, zoneId)
                                 box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
-                                     bgcolor=color.new(base, fillT), border_color=color.new(base, borderT), border_width=borderW,
-                                     text=pairText, text_color=zoneTextColor, text_size=zoneTextSize,
-                                     text_halign=text.align_left, text_valign=text.align_top)
+                                     bgcolor=color.new(base, fillT), border_color=color.new(base, borderT), border_width=borderW)
                                 array.push(zoneBoxes, newBox)
                                 array.push(zoneKeys, zoneId)
                                 array.push(zoneTops, high30)
                                 array.push(zoneBottoms, low30)
                                 array.push(zoneCheckFroms, start30)
                                 array.push(zoneGrade, score)
-                                f_pushZoneMeta(dir30, src30)
+                                f_pushZoneMeta(dir30, src30, pairText, info)
                                 array.push(drawnIds, zoneId)
                                 newPrimary += 1
                                 if isSuper
@@ -745,7 +776,9 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0 an
                                 box.set_bgcolor(ub, color.new(base, fillT))
                                 box.set_border_color(ub, color.new(base, borderT))
                                 box.set_border_width(ub, borderW)
-                                box.set_text(ub, pairText)
+                                array.set(zoneTexts, zIdx, pairText)
+                                array.set(zoneInfos, zIdx, info)
+                                f_refreshLabel(zIdx)
                                 if isSuper and array.get(zoneGrade, zIdx) < 10
                                     newSuper += 1
                                 array.set(zoneGrade, zIdx, score)
@@ -782,17 +815,15 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                 float r15 = array.get(volumes15, j)
                 int g15 = f_grade(r15)
                 box newBox = box.new(left=array.get(times15, j), top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
-                     bgcolor=color.new(base, f_fillT(g15)), border_color=color.new(base, f_borderT(g15)), border_width=f_borderW(g15),
-                     text=PAD + "15m+10m+5m · " + f_volText(g15, r15) + (showZoneInfo ? "\n" + PAD + "15m " + f_hm(array.get(times15, j)) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""),
-                     text_color=zoneTextColor, text_size=zoneTextSize,
-                     text_halign=text.align_left, text_valign=text.align_top)
+                     bgcolor=color.new(base, f_fillT(g15)), border_color=color.new(base, f_borderT(g15)), border_width=f_borderW(g15))
                 array.push(zoneBoxes, newBox)
                 array.push(zoneKeys, tripleId)
                 array.push(zoneTops, high15)
                 array.push(zoneBottoms, low15)
                 array.push(zoneCheckFroms, start15)
                 array.push(zoneGrade, g15)
-                f_pushZoneMeta(dir15, array.get(times15, j))
+                string info15 = showZoneInfo ? "\n15m " + f_hm(array.get(times15, j)) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""
+                f_pushZoneMeta(dir15, array.get(times15, j), "15·10·5  " + f_volShort(g15, r15), info15)
                 newFallback += 1
 
 // 1m entries: a new zone searches all stored 1m blocks; a zone still without an
@@ -861,6 +892,25 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
 
 alertcondition(newPrimary > 0, "New 30m + 15m + 5m OB zone", "A new 30m Order Block zone with 15m and 5m confirmation was drawn on {{ticker}}.")
 alertcondition(newSuper > 0, "New SUPER STRONG OB zone", "A 30m Order Block zone is now confirmed by 15m, 10m and 5m blocks (SUPER STRONG) on {{ticker}}.")
+// Labels: placed right of the last candle at each zone's middle; labels that
+// would overlap are pushed down so every one stays readable.
+if barstate.islast and array.size(zoneLabels) > 0
+    array<float> mids = array.new<float>()
+    for z = 0 to array.size(zoneLabels) - 1
+        array.push(mids, (array.get(zoneTops, z) + array.get(zoneBottoms, z)) / 2)
+    array<int> ord = array.sort_indices(mids, order.descending)
+    float minSpacing = nz(atr30) * (showZoneInfo ? 0.7 : 0.35)
+    float lastY = na
+    for n = 0 to array.size(ord) - 1
+        int z = array.get(ord, n)
+        label lb = array.get(zoneLabels, z)
+        if not na(lb)
+            float y = array.get(mids, z)
+            if not na(lastY) and lastY - y < minSpacing
+                y := lastY - minSpacing
+            label.set_xy(lb, bar_index + 2, y)
+            lastY := y
+
 alertcondition(newEntryHit > 0, "1m entry reached", "Price reached the 1m entry block of an Order Block zone on {{ticker}}.")
 alertcondition(newFallback > 0, "New 15m + 10m + 5m OB zone", "A new 15m Order Block zone with 10m and 5m confirmation plus 15m volume was drawn on {{ticker}}.")
 
