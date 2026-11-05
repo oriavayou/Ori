@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.27", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.28", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -47,7 +47,9 @@ indicator("MTF Order Blocks v6.27", shorttitle="MTF OB", overlay=true, max_boxes
 // -----------------------------------------------------------------------------
 string GROUP_OB = "Order Block Detection"
 int atrLen = input.int(14, "ATR length", minval=2, group=GROUP_OB)
-int structureLen = input.int(5, "Break of structure lookback", minval=2, maxval=30, group=GROUP_OB)
+string bosMode = input.string("Block candle", "Impulse must break", options=["Block candle", "Last N candles"], group=GROUP_OB,
+     tooltip="Block candle = the impulse closes above the high of the block candle (below its low for a sell block). Last N candles = the impulse closes above the highest high of the N candles before it (stricter: an old spike can block it).")
+int structureLen = input.int(5, "Break of structure lookback (Last N candles)", minval=2, maxval=30, group=GROUP_OB)
 int searchLen = input.int(8, "Search last opposite candle", minval=1, maxval=30, group=GROUP_OB)
 float impulseATR = input.float(0.80, "Impulse body / ATR", minval=0.1, step=0.05, group=GROUP_OB)
 float minBodyPct = input.float(0.55, "Minimum body / candle range", minval=0.1, maxval=1.0, step=0.05, group=GROUP_OB)
@@ -140,8 +142,9 @@ f_scanOB() =>
     float bodyRatio = body / candleRange
 
     bool bigBody = not na(atrNow[1]) and body[1] >= atrNow[1] * impulseATR and bodyRatio[1] >= minBodyPct
-    bool bullImpulse = close[1] > open[1] and bigBody and not na(structHigh[2]) and close[1] > structHigh[2]
-    bool bearImpulse = close[1] < open[1] and bigBody and not na(structLow[2]) and close[1] < structLow[2]
+    bool bosOnBlock = bosMode == "Block candle"
+    bool bullImpulse = close[1] > open[1] and bigBody and (bosOnBlock or (not na(structHigh[2]) and close[1] > structHigh[2]))
+    bool bearImpulse = close[1] < open[1] and bigBody and (bosOnBlock or (not na(structLow[2]) and close[1] < structLow[2]))
     if requireFVG
         bullImpulse := bullImpulse and low > high[2]
         bearImpulse := bearImpulse and high < low[2]
@@ -160,6 +163,12 @@ f_scanOB() =>
         for i = 2 to searchLen + 1
             if na(src) and close[i] > open[i] and (not restrictToSessions or inAllowedSession[i])
                 src := i
+
+    // "Block candle" break rule: the impulse must close beyond the block candle itself.
+    if not na(src) and bosOnBlock
+        bool brokeBlock = dir == 1 ? close[1] > high[src] : close[1] < low[src]
+        if not brokeBlock
+            src := na
 
     int srcTime = na
     int impulseTime = na
@@ -387,7 +396,7 @@ f_explain() =>
                 float body1 = math.abs(close[1] - open[1])
                 float bAtr = body1 / atrNow[1]
                 float bRng = body1 / math.max(high[1] - low[1], syminfo.mintick)
-                float lvl = bull ? structHigh[2] : structLow[2]
+                float lvl = bosMode == "Block candle" ? (bull ? high[j] : low[j]) : (bull ? structHigh[2] : structLow[2])
                 bool bos = bull ? close[1] > lvl : close[1] < lvl
                 bool fvg = bull ? low > high[2] : high < low[2]
                 int src = na
