@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.31", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.32", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -1042,16 +1042,16 @@ var array<string> exLines = array.new<string>()
 if explainOn and exLine != "" and array.indexof(exTimes, exT) == -1
     array.push(exTimes, exT)
     array.push(exLines, exLine)
-var table exTable = table.new(position.bottom_left, 4, 2, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1, border_color=color.silver, border_width=1)
+var table exTable = table.new(position.bottom_left, 8, 2, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1, border_color=color.silver, border_width=1)
 if barstate.islast and explainOn
     table.cell(exTable, 0, 0, explainTf + "m block candle " + f_hm(explainTime) + ": each next candle tested as the impulse (needed value in brackets)",
          text_color=color.black, text_size=size.small, text_halign=text.align_left)
-    table.merge_cells(exTable, 0, 0, 3, 0)
+    table.merge_cells(exTable, 0, 0, 7, 0)
     if array.size(exLines) == 0
         table.cell(exTable, 0, 1, "No data: check the time, and use a chart timeframe\nequal to or lower than " + explainTf + "m.",
              text_color=color.red, text_size=size.small, text_halign=text.align_left)
     else
-        for n = 0 to math.min(array.size(exLines), 4) - 1
+        for n = 0 to math.min(array.size(exLines), 8) - 1
             table.cell(exTable, n, 1, array.get(exLines, n), text_color=color.black, text_size=size.small, text_halign=text.align_left, text_valign=text.align_top)
 
 alertcondition(newEntryHit > 0, "1m entry reached", "Price reached the 1m entry block of an Order Block zone on {{ticker}}.")
