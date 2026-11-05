@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.18", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.19", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -21,7 +21,8 @@ indicator("MTF Order Blocks v6.18", shorttitle="MTF OB", overlay=true, max_boxes
 //   VOL+ = very strong volume, VOL = good, LOW = low. E = 1m entry price (✓ = reached).
 // - v6.16: every zone gets a 1m ENTRY block: the closest untouched same-direction
 //   1m OB formed since the zone's source candle, within "Max distance" of the zone
-//   (it does not have to overlap the zone). Blue = buy entry, orange = sell entry.
+//   (it does not have to overlap the zone). One colour for buy and sell entries
+//   (purple by default); the border turns dashed once price reaches the entry.
 //   The line price is the entry (top of a buy block / bottom of a sell block).
 // - v6.15: a 30m zone needs a 15m AND a 5m block (30m+15m+5m). If a 10m block is
 //   valid at the same moment as well, it is SUPER STRONG (darkest box, border 4).
@@ -64,6 +65,7 @@ string GROUP_ENTRY = "1m Entry"
 bool showEntry = input.bool(true, "Mark a 1m entry block for every zone", group=GROUP_ENTRY)
 float entryATR = input.float(0.5, "Max distance of the 1m block from the zone (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_ENTRY,
      tooltip="0 = the 1m block must touch or overlap the zone. Larger values also accept 1m blocks just above / below the zone.")
+color entryColor = input.color(color.purple, "Entry box colour (long and short)", group=GROUP_ENTRY)
 int entryOpacity = input.int(82, "Entry box transparency", minval=0, maxval=100, group=GROUP_ENTRY)
 
 string GROUP_SESSIONS = "Valid OB Creation Sessions"
@@ -627,9 +629,9 @@ f_setEntry(int z, int i) =>
     int zDir = array.get(zoneDirs, z)
     float t1 = array.get(tops1, i)
     float b1 = array.get(bottoms1, i)
-    color ec = zDir == 1 ? color.blue : color.orange
+    color ec = entryColor
     box eb = box.new(left=array.get(times1, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
-         bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 100), border_width=0)
+         bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2)
     array.set(zoneEntryBoxes, z, eb)
     array.set(zoneEntryTops, z, t1)
     array.set(zoneEntryBottoms, z, b1)
@@ -675,6 +677,7 @@ if array.size(zoneBoxes) > 0
         if not na(eb) and not array.get(zoneEntryHit, z)
             if not na(f_firstTouch(curT, curH, curL, array.get(zoneEntryChecks, z), array.get(zoneEntryBottoms, z), array.get(zoneEntryTops, z)))
                 array.set(zoneEntryHit, z, true)
+                box.set_border_style(eb, line.style_dashed)
                 f_refreshLabel(z)
                 newEntryHit += 1
 
