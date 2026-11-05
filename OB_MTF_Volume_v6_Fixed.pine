@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.24", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.25", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -18,7 +18,9 @@ indicator("MTF Order Blocks v6.24", shorttitle="MTF OB", overlay=true, max_boxes
 //   right of the last candle, spread apart so labels never overlap:
 //     "★ 30·15·10·5  VOL+ x2.3   E 4093.59"   ★ = SUPER STRONG
 //     "30·15·5  VOL x1.7   E ..."   "15·10·5  LOW x1.2"
-//   VOL+ = very strong volume, VOL = good, LOW = low. E = 1m entry price (✓ = reached).
+//   VOL+ = very strong volume, VOL = good, LOW = low.
+//   v6.25: volume is measured around the BLOCK candle (it and up to 3 candles
+//   before / after it), not around the impulse. E = 1m entry price (✓ = reached).
 // - v6.16: every zone gets a 1m ENTRY block: the closest untouched same-direction
 //   1m OB formed since the zone's source candle, within "Max distance" of the zone
 //   (it does not have to overlap the zone). One colour for buy and sell entries
@@ -56,7 +58,8 @@ string GROUP_VOL = "Volume Filter (chart symbol)"
 int volLen = input.int(20, "Volume average length", minval=2, group=GROUP_VOL)
 float volMultiplier = input.float(1.50, "Good volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
 float volStrongMultiplier = input.float(2.0, "Very strong volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
-int volumeWindow = input.int(3, "Volume scan window around impulse", minval=1, maxval=5, group=GROUP_VOL)
+int volumeWindow = input.int(3, "Volume window: candles before / after the block candle", minval=0, maxval=8, group=GROUP_VOL,
+     tooltip="The block's volume = the highest volume of the block candle and up to this many candles before and after it (only candles that already closed), compared with the average volume before that window.")
 
 string GROUP_MTF = "Multi-timeframe Confirmation"
 float nearATR = input.float(2.3, "Allowed distance between OBs (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_MTF)
@@ -123,7 +126,6 @@ f_scanOB() =>
     // Every ta.* call is unconditional (v6 lazy `and` would otherwise skip bars).
     float atrNow = ta.atr(atrLen)
     float avgVol = ta.sma(volume, volLen)
-    float volPeak = ta.highest(volume, volumeWindow)
     float structHigh = ta.highest(high, structureLen)
     float structLow = ta.lowest(low, structureLen)
 
@@ -138,10 +140,7 @@ f_scanOB() =>
         bullImpulse := bullImpulse and low > high[2]
         bearImpulse := bearImpulse and high < low[2]
 
-    // Volume: the highest volume of the impulse candle and the candles just before
-    // it (bars [1]..[window]) against the average of the bars before the impulse.
-    // The candle AFTER the impulse is not counted.
-    float volRatio = not na(avgVol[2]) and avgVol[2] > 0 and not na(volPeak[1]) ? volPeak[1] / avgVol[2] : na
+    // (volume is measured around the block candle, see below)
 
     int src = na
     int dir = 0
@@ -175,6 +174,14 @@ f_scanOB() =>
                 retouched := true
             if close[j] > t or close[j] < b
                 leftBlock := true
+        // Volume: highest volume of the block candle and up to `volumeWindow` candles
+        // before and after it (after = only candles that already closed, so at
+        // most up to bar [0]), against the average of the candles before that window.
+        float peak = 0.0
+        for j = src + volumeWindow to math.max(src - volumeWindow, 0)
+            peak := math.max(peak, nz(volume[j]))
+        float base = avgVol[src + volumeWindow + 1]
+        float volRatio = not na(base) and base > 0 ? peak / base : na
         if not retouched
             srcTime := time[src]
             impulseTime := time[1]
