@@ -1,20 +1,22 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.2 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.3 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
-// v6.2
-// - Strict "untouched" rule. A block is only valid while price has not come back
-//   into it after leaving it:
-//     * Before confirmation: once a candle after the source candle closes
-//       outside the block, any later candle (up to and including the FVG candle)
-//       whose wick enters the block kills it. It is never stored or drawn.
-//     * After confirmation: touches are checked on 5m candles (or the chart
-//       candles when the chart is 5m or lower), from the close of the
-//       confirmation candle, on every chart timeframe. A touched block is never
-//       drawn, and a drawn zone is deleted on its first touch.
-//   v6.1 skipped the candle on which a zone was drawn, so a wick on that
-//   candle left the zone on the chart.
-// - Works on ANY chart timeframe (30m / 15m / 10m / 5m data is always used).
-// - No status table.
+// v6.3 - same zones on every chart timeframe
+// Each OB record has a validity window [confirmation close, first touch) that
+// is measured on the SAME 5m candles whatever the chart timeframe is. A
+// confluence zone exists when the windows of its blocks overlap, so the result
+// no longer depends on how often the chart happens to evaluate it (v6.2 took a
+// snapshot on every chart candle, so a 15m chart could miss a zone that a 10m
+// chart caught between two touches).
+// - A late-arriving record is back-checked against a buffer of recent 5m candles.
+// - A zone is never drawn before its blocks are actually confirmed.
+// - If a 30m+15m zone appears for a 15m block that already had a
+//   15m+10m+5m zone, the fallback zone is replaced by the 30m+15m zone.
+//
+// Untouched rule (v6.2): before confirmation, once a candle closes outside the
+// block, any later wick inside it kills the block. After confirmation, the first
+// 5m candle that touches the block ends it; touched blocks are never drawn and a
+// drawn zone is deleted on its first touch.
 
 // -----------------------------------------------------------------------------
 // Inputs
@@ -139,12 +141,28 @@ f_scanConfirmed() =>
     [sT, sI, sC, sB, sP, sD, sV] = f_scanOB()
     [sT[1], sI[1], sC[1], sB[1], sP[1], sD[1], sV[1]]
 
+
 // -----------------------------------------------------------------------------
 // Storage helpers
+// Each record keeps: source time, impulse time, checkFrom (confirmation close,
+// when the block becomes known), touchedAt (open time of the first 5m candle
+// that touched it, na = untouched), bottom, top, direction, volume flag.
 // -----------------------------------------------------------------------------
-f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<float> bottoms, array<float> tops,
-            array<int> directions, array<bool> volumePasses, array<bool> touched,
-            int srcTime, int impulseTime, int checkFrom, float bottom, float top, int direction, bool volumePass, int maxRecords) =>
+
+// Open time of the first candle (opened at/after fromTime) that overlaps the block, or na.
+f_firstTouch(array<int> cT, array<float> cH, array<float> cL, int fromTime, float bottom, float top) =>
+    int hitAt = na
+    if array.size(cT) > 0
+        for c = 0 to array.size(cT) - 1
+            int ct = array.get(cT, c)
+            if na(hitAt) and not na(ct) and ct >= fromTime and array.get(cH, c) >= bottom and array.get(cL, c) <= top
+                hitAt := ct
+    hitAt
+
+f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<int> touchedAts, array<float> bottoms, array<float> tops,
+            array<int> directions, array<bool> volumePasses,
+            int srcTime, int impulseTime, int checkFrom, float bottom, float top, int direction, bool volumePass, int maxRecords,
+            array<int> bufT, array<float> bufH, array<float> bufL) =>
     bool added = false
     if not na(srcTime) and not na(impulseTime) and not na(checkFrom) and not na(bottom) and not na(top) and direction != 0
         bool exists = false
@@ -156,21 +174,22 @@ f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, ar
             array.push(times, srcTime)
             array.push(impulseTimes, impulseTime)
             array.push(checkFroms, checkFrom)
+            // Back-check the recent 5m candles in case the record arrived late.
+            array.push(touchedAts, f_firstTouch(bufT, bufH, bufL, checkFrom, bottom, top))
             array.push(bottoms, bottom)
             array.push(tops, top)
             array.push(directions, direction)
             array.push(volumePasses, volumePass)
-            array.push(touched, false)
             added := true
             while array.size(times) > maxRecords
                 array.shift(times)
                 array.shift(impulseTimes)
                 array.shift(checkFroms)
+                array.shift(touchedAts)
                 array.shift(bottoms)
                 array.shift(tops)
                 array.shift(directions)
                 array.shift(volumePasses)
-                array.shift(touched)
     added
 
 f_rawBox(array<box> store, int srcTime, int impulseTime, float bottom, float top, int direction, int tfSeconds, string tfText, string lineStyle) =>
@@ -183,44 +202,42 @@ f_rawBox(array<box> store, int srcTime, int impulseTime, float bottom, float top
         box.delete(array.shift(store))
 
 // Push every OB event found in one timeframe's array into its record store.
-f_ingest(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<float> bottoms, array<float> tops,
-         array<int> directions, array<bool> volumePasses, array<bool> touched,
+f_ingest(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<int> touchedAts, array<float> bottoms, array<float> tops,
+         array<int> directions, array<bool> volumePasses,
          array<int> tArr, array<int> iArr, array<int> cArr, array<float> bArr, array<float> pArr, array<int> dArr, array<bool> vArr,
-         int maxRecords, bool drawRaw, array<box> rawStore, int tfSeconds, string tfText, string lineStyle) =>
+         int maxRecords, array<int> bufT, array<float> bufH, array<float> bufL,
+         bool drawRaw, array<box> rawStore, int tfSeconds, string tfText, string lineStyle) =>
     int addedCount = 0
     if array.size(tArr) > 0
         for i = 0 to array.size(tArr) - 1
             int srcT = array.get(tArr, i)
             if not na(srcT)
-                bool added = f_addRecord(times, impulseTimes, checkFroms, bottoms, tops, directions, volumePasses, touched,
-                     srcT, array.get(iArr, i), array.get(cArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), array.get(vArr, i), maxRecords)
+                bool added = f_addRecord(times, impulseTimes, checkFroms, touchedAts, bottoms, tops, directions, volumePasses,
+                     srcT, array.get(iArr, i), array.get(cArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), array.get(vArr, i),
+                     maxRecords, bufT, bufH, bufL)
                 if added
                     addedCount += 1
                     if drawRaw
                         f_rawBox(rawStore, srcT, array.get(iArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), tfSeconds, tfText, lineStyle)
     addedCount
 
-// True when any candle that opened at or after `fromTime` overlaps [bottom, top].
-f_hit(array<int> cT, array<float> cH, array<float> cL, int fromTime, float bottom, float top) =>
-    bool hit = false
-    if array.size(cT) > 0
-        for c = 0 to array.size(cT) - 1
-            int ct = array.get(cT, c)
-            if not hit and not na(ct) and ct >= fromTime and array.get(cH, c) >= bottom and array.get(cL, c) <= top
-                hit := true
-    hit
-
-f_updateRecords(array<int> checkFroms, array<float> bottoms, array<float> tops, array<bool> touched,
+// Apply this chart candle's new 5m candles to records that are still untouched.
+f_updateRecords(array<int> checkFroms, array<int> touchedAts, array<float> bottoms, array<float> tops,
                 array<int> cT, array<float> cH, array<float> cL) =>
-    if array.size(checkFroms) > 0
+    if array.size(checkFroms) > 0 and array.size(cT) > 0
         for i = 0 to array.size(checkFroms) - 1
-            if not array.get(touched, i) and f_hit(cT, cH, cL, array.get(checkFroms, i), array.get(bottoms, i), array.get(tops, i))
-                array.set(touched, i, true)
+            if na(array.get(touchedAts, i))
+                array.set(touchedAts, i, f_firstTouch(cT, cH, cL, array.get(checkFroms, i), array.get(bottoms, i), array.get(tops, i)))
 
-f_recordUsable(array<int> impulseTimes, array<bool> touched, int tfSeconds, int ageBars, int index) =>
-    int bornAt = array.get(impulseTimes, index)
-    bool ageOK = not na(bornAt) and time - bornAt <= ageBars * tfSeconds * 1000
-    ageOK and not array.get(touched, index)
+// End of a record's validity window: first touch or expiry, whichever is first.
+f_windowEnd(array<int> touchedAts, array<int> impulseTimes, int tfSeconds, int index) =>
+    int expiry = array.get(impulseTimes, index) + maxAgeBars * tfSeconds * 1000
+    int hitAt = array.get(touchedAts, index)
+    na(hitAt) ? expiry : math.min(hitAt, expiry)
+
+// Untouched and not expired right now.
+f_aliveNow(array<int> touchedAts, array<int> impulseTimes, int tfSeconds, int index) =>
+    na(array.get(touchedAts, index)) and time <= array.get(impulseTimes, index) + maxAgeBars * tfSeconds * 1000
 
 f_near(float lowA, float highA, float lowB, float highB, float tolerance) =>
     bool valid = not na(lowA) and not na(highA) and not na(lowB) and not na(highB) and not na(tolerance)
@@ -264,99 +281,146 @@ bool htf5 = chartSec <= 300
 [l10t, l10i, l10c, l10b, l10p, l10d, l10v] = request.security_lower_tf(syminfo.tickerid, "10", f_scanOB(), ignore_invalid_timeframe=true)
 [l5t, l5i, l5c, l5b, l5p, l5d, l5v] = request.security_lower_tf(syminfo.tickerid, "5", f_scanOB(), ignore_invalid_timeframe=true)
 
-// Candles used for touch tracking: chart candles on 5m or lower, otherwise
-// every 5m candle inside the current chart candle.
-[c5t, c5h, c5l] = request.security_lower_tf(syminfo.tickerid, "5", [time, high, low], ignore_invalid_timeframe=true)
-array<int> candT = htf5 ? array.from(time) : c5t
-array<float> candH = htf5 ? array.from(high) : c5h
-array<float> candL = htf5 ? array.from(low) : c5l
-
 // 30m ATR on every chart timeframe, so the confluence tolerance never changes.
 float atr30 = request.security(syminfo.tickerid, "30", ta.atr(14)[1], lookahead=barmerge.lookahead_on)
 float allowedGap = atr30 * nearATR
 
+// -----------------------------------------------------------------------------
+// 5m candles used for touch tracking, identical on every chart timeframe:
+//   chart > 5m : every 5m candle inside the chart candle
+//   chart = 5m : the chart candle itself
+//   chart < 5m : the last confirmed 5m candle, once
+// -----------------------------------------------------------------------------
+[c5t, c5h, c5l] = request.security_lower_tf(syminfo.tickerid, "5", [time, high, low], ignore_invalid_timeframe=true)
+[p5t, p5h, p5l] = request.security(syminfo.tickerid, "5", [time[1], high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+var int lastCandleTime = na
+var int knownUntil = na
+array<int> curT = array.new<int>()
+array<float> curH = array.new<float>()
+array<float> curL = array.new<float>()
+if chartSec > 300
+    if array.size(c5t) > 0
+        for i = 0 to array.size(c5t) - 1
+            array.push(curT, array.get(c5t, i))
+            array.push(curH, array.get(c5h, i))
+            array.push(curL, array.get(c5l, i))
+else if chartSec == 300
+    array.push(curT, time)
+    array.push(curH, high)
+    array.push(curL, low)
+else if not na(p5t) and (na(lastCandleTime) or p5t > lastCandleTime)
+    array.push(curT, p5t)
+    array.push(curH, p5h)
+    array.push(curL, p5l)
+if array.size(curT) > 0
+    lastCandleTime := array.get(curT, array.size(curT) - 1)
+    knownUntil := lastCandleTime + 300 * 1000
+
+// -----------------------------------------------------------------------------
+// Records
+// -----------------------------------------------------------------------------
 var array<int> times30 = array.new<int>()
 var array<int> impulses30 = array.new<int>()
 var array<int> checks30 = array.new<int>()
+var array<int> hits30 = array.new<int>()
 var array<float> bottoms30 = array.new<float>()
 var array<float> tops30 = array.new<float>()
 var array<int> directions30 = array.new<int>()
 var array<bool> volumes30 = array.new<bool>()
-var array<bool> touched30 = array.new<bool>()
 
 var array<int> times15 = array.new<int>()
 var array<int> impulses15 = array.new<int>()
 var array<int> checks15 = array.new<int>()
+var array<int> hits15 = array.new<int>()
 var array<float> bottoms15 = array.new<float>()
 var array<float> tops15 = array.new<float>()
 var array<int> directions15 = array.new<int>()
 var array<bool> volumes15 = array.new<bool>()
-var array<bool> touched15 = array.new<bool>()
 
 var array<int> times10 = array.new<int>()
 var array<int> impulses10 = array.new<int>()
 var array<int> checks10 = array.new<int>()
+var array<int> hits10 = array.new<int>()
 var array<float> bottoms10 = array.new<float>()
 var array<float> tops10 = array.new<float>()
 var array<int> directions10 = array.new<int>()
 var array<bool> volumes10 = array.new<bool>()
-var array<bool> touched10 = array.new<bool>()
 
 var array<int> times5 = array.new<int>()
 var array<int> impulses5 = array.new<int>()
 var array<int> checks5 = array.new<int>()
+var array<int> hits5 = array.new<int>()
 var array<float> bottoms5 = array.new<float>()
 var array<float> tops5 = array.new<float>()
 var array<int> directions5 = array.new<int>()
 var array<bool> volumes5 = array.new<bool>()
-var array<bool> touched5 = array.new<bool>()
 
 var array<box> rawBoxes = array.new<box>()
 
+// Recent 5m candles (about 3 hours), for back-checking records that arrive late.
+var array<int> bufT = array.new<int>()
+var array<float> bufH = array.new<float>()
+var array<float> bufL = array.new<float>()
+
+// 1) New candles -> records already stored.
+f_updateRecords(checks30, hits30, bottoms30, tops30, curT, curH, curL)
+f_updateRecords(checks15, hits15, bottoms15, tops15, curT, curH, curL)
+f_updateRecords(checks10, hits10, bottoms10, tops10, curT, curH, curL)
+f_updateRecords(checks5, hits5, bottoms5, tops5, curT, curH, curL)
+
+// 2) Add the new candles to the buffer.
+if array.size(curT) > 0
+    for i = 0 to array.size(curT) - 1
+        array.push(bufT, array.get(curT, i))
+        array.push(bufH, array.get(curH, i))
+        array.push(bufL, array.get(curL, i))
+while array.size(bufT) > 36
+    array.shift(bufT)
+    array.shift(bufH)
+    array.shift(bufL)
+
+// 3) New records, back-checked against the buffer.
 if htf30
-    f_ingest(times30, impulses30, checks30, bottoms30, tops30, directions30, volumes30, touched30,
+    f_ingest(times30, impulses30, checks30, hits30, bottoms30, tops30, directions30, volumes30,
          array.from(h30t), array.from(h30i), array.from(h30c), array.from(h30b), array.from(h30p), array.from(h30d), array.from(h30v),
-         maxRecordsPerTF, showRaw30, rawBoxes, 1800, "30m", line.style_dashed)
+         maxRecordsPerTF, bufT, bufH, bufL, showRaw30, rawBoxes, 1800, "30m", line.style_dashed)
 else
-    f_ingest(times30, impulses30, checks30, bottoms30, tops30, directions30, volumes30, touched30,
-         l30t, l30i, l30c, l30b, l30p, l30d, l30v, maxRecordsPerTF, showRaw30, rawBoxes, 1800, "30m", line.style_dashed)
+    f_ingest(times30, impulses30, checks30, hits30, bottoms30, tops30, directions30, volumes30,
+         l30t, l30i, l30c, l30b, l30p, l30d, l30v, maxRecordsPerTF, bufT, bufH, bufL, showRaw30, rawBoxes, 1800, "30m", line.style_dashed)
 
 if htf15
-    f_ingest(times15, impulses15, checks15, bottoms15, tops15, directions15, volumes15, touched15,
+    f_ingest(times15, impulses15, checks15, hits15, bottoms15, tops15, directions15, volumes15,
          array.from(h15t), array.from(h15i), array.from(h15c), array.from(h15b), array.from(h15p), array.from(h15d), array.from(h15v),
-         maxRecordsPerTF, showRaw15, rawBoxes, 900, "15m", line.style_dotted)
+         maxRecordsPerTF, bufT, bufH, bufL, showRaw15, rawBoxes, 900, "15m", line.style_dotted)
 else
-    f_ingest(times15, impulses15, checks15, bottoms15, tops15, directions15, volumes15, touched15,
-         l15t, l15i, l15c, l15b, l15p, l15d, l15v, maxRecordsPerTF, showRaw15, rawBoxes, 900, "15m", line.style_dotted)
+    f_ingest(times15, impulses15, checks15, hits15, bottoms15, tops15, directions15, volumes15,
+         l15t, l15i, l15c, l15b, l15p, l15d, l15v, maxRecordsPerTF, bufT, bufH, bufL, showRaw15, rawBoxes, 900, "15m", line.style_dotted)
 
 if htf10
-    f_ingest(times10, impulses10, checks10, bottoms10, tops10, directions10, volumes10, touched10,
+    f_ingest(times10, impulses10, checks10, hits10, bottoms10, tops10, directions10, volumes10,
          array.from(h10t), array.from(h10i), array.from(h10c), array.from(h10b), array.from(h10p), array.from(h10d), array.from(h10v),
-         maxRecordsPerTF, false, rawBoxes, 600, "10m", line.style_dotted)
+         maxRecordsPerTF, bufT, bufH, bufL, false, rawBoxes, 600, "10m", line.style_dotted)
 else
-    f_ingest(times10, impulses10, checks10, bottoms10, tops10, directions10, volumes10, touched10,
-         l10t, l10i, l10c, l10b, l10p, l10d, l10v, maxRecordsPerTF, false, rawBoxes, 600, "10m", line.style_dotted)
+    f_ingest(times10, impulses10, checks10, hits10, bottoms10, tops10, directions10, volumes10,
+         l10t, l10i, l10c, l10b, l10p, l10d, l10v, maxRecordsPerTF, bufT, bufH, bufL, false, rawBoxes, 600, "10m", line.style_dotted)
 
 if htf5
-    f_ingest(times5, impulses5, checks5, bottoms5, tops5, directions5, volumes5, touched5,
+    f_ingest(times5, impulses5, checks5, hits5, bottoms5, tops5, directions5, volumes5,
          array.from(h5t), array.from(h5i), array.from(h5c), array.from(h5b), array.from(h5p), array.from(h5d), array.from(h5v),
-         maxRecordsPerTF, false, rawBoxes, 300, "5m", line.style_dotted)
+         maxRecordsPerTF, bufT, bufH, bufL, false, rawBoxes, 300, "5m", line.style_dotted)
 else
-    f_ingest(times5, impulses5, checks5, bottoms5, tops5, directions5, volumes5, touched5,
-         l5t, l5i, l5c, l5b, l5p, l5d, l5v, maxRecordsPerTF, false, rawBoxes, 300, "5m", line.style_dotted)
-
-// Mark every stored OB that any candle touched after its confirmation.
-f_updateRecords(checks30, bottoms30, tops30, touched30, candT, candH, candL)
-f_updateRecords(checks15, bottoms15, tops15, touched15, candT, candH, candL)
-f_updateRecords(checks10, bottoms10, tops10, touched10, candT, candH, candL)
-f_updateRecords(checks5, bottoms5, tops5, touched5, candT, candH, candL)
+    f_ingest(times5, impulses5, checks5, hits5, bottoms5, tops5, directions5, volumes5,
+         l5t, l5i, l5c, l5b, l5p, l5d, l5v, maxRecordsPerTF, bufT, bufH, bufL, false, rawBoxes, 300, "5m", line.style_dotted)
 
 // -----------------------------------------------------------------------------
-// Draw zones.
-// Primary: 30m OB + nearby same-direction 15m OB (one box per 30m OB). Volume
-// only changes the opacity; a weak box is upgraded if a strong pair appears.
-// Fallback: a 15m OB with no 30m match, 15m volume OK, plus nearby untouched
-// 10m AND 5m OBs (one box per 15m OB).
+// Zones
+// Primary: an untouched 30m OB whose validity window overlapped the window of a
+// nearby same-direction 15m OB (one box per 30m OB; volume only changes opacity).
+// Fallback: an untouched 15m OB with no such 30m partner, 15m volume OK, and a
+// nearby 10m AND 5m OB whose windows overlapped its window at the same time.
+// A window only counts once it is confirmed by candles already seen
+// (start < knownUntil), so nothing is drawn ahead of time.
 // -----------------------------------------------------------------------------
 var array<box> zoneBoxes = array.new<box>()
 var array<string> zoneKeys = array.new<string>()
@@ -375,49 +439,54 @@ f_removeZone(int z) =>
     array.remove(zoneCheckFroms, z)
     array.remove(zoneStrong, z)
 
+f_removeZoneByKey(string key) =>
+    int idx = f_indexOf(zoneKeys, key)
+    if idx >= 0
+        f_removeZone(idx)
+
 // A zone disappears completely on its first touch.
 if array.size(zoneBoxes) > 0
     for z = array.size(zoneBoxes) - 1 to 0
-        if f_hit(candT, candH, candL, array.get(zoneCheckFroms, z), array.get(zoneBottoms, z), array.get(zoneTops, z))
+        if not na(f_firstTouch(curT, curH, curL, array.get(zoneCheckFroms, z), array.get(zoneBottoms, z), array.get(zoneTops, z)))
             f_removeZone(z)
 
 int newPrimary = 0
 int newFallback = 0
 
-if array.size(times15) > 0
-    for j = 0 to array.size(times15) - 1
-        if f_recordUsable(impulses15, touched15, 900, maxAgeBars, j)
-            int dir15 = array.get(directions15, j)
-            float low15 = array.get(bottoms15, j)
-            float high15 = array.get(tops15, j)
-            bool matched30ForThis15 = false
-
-            // Primary 30m + 15m pairing. Search ALL stored 30m candidates.
-            if array.size(times30) > 0
-                for k = 0 to array.size(times30) - 1
-                    bool usable30 = f_recordUsable(impulses30, touched30, 1800, maxAgeBars, k)
-                    if usable30 and array.get(directions30, k) == dir15 and f_near(array.get(bottoms30, k), array.get(tops30, k), low15, high15, allowedGap)
-                        matched30ForThis15 := true
-                        int src30 = array.get(times30, k)
-                        string zoneId = "P|" + str.tostring(src30)
+// Primary 30m + 15m.
+if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
+    for k = 0 to array.size(times30) - 1
+        if f_aliveNow(hits30, impulses30, 1800, k)
+            int dir30 = array.get(directions30, k)
+            float low30 = array.get(bottoms30, k)
+            float high30 = array.get(tops30, k)
+            int start30 = array.get(checks30, k)
+            int src30 = array.get(times30, k)
+            string zoneId = "P|" + str.tostring(src30)
+            color base = dir30 == 1 ? color.teal : color.red
+            for j = 0 to array.size(times15) - 1
+                if array.get(directions15, j) == dir30 and f_near(low30, high30, array.get(bottoms15, j), array.get(tops15, j), allowedGap)
+                    int startPair = math.max(start30, array.get(checks15, j))
+                    int endPair = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+                    if startPair < endPair
                         bool strongVolume = array.get(volumes30, k) and array.get(volumes15, j)
-                        color base = dir15 == 1 ? color.teal : color.red
+                        // The 30m zone supersedes a 15m+10m+5m zone built on the same 15m block.
+                        f_removeZoneByKey("F|" + str.tostring(array.get(times15, j)))
                         int zIdx = f_indexOf(zoneKeys, zoneId)
                         if zIdx == -1 and not f_hasId(drawnIds, zoneId)
-                            box newBox = box.new(left=src30, top=array.get(tops30, k), right=time, bottom=array.get(bottoms30, k), xloc=xloc.bar_time, extend=extend.right,
+                            box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
                                  bgcolor=color.new(base, strongVolume ? strongOpacity : weakOpacity), border_color=color.new(base, strongVolume ? 10 : 50), border_width=strongVolume ? 2 : 1,
                                  text=strongVolume ? "30m+15m · VOL OK" : "30m+15m · LOW VOL", text_color=color.new(base, 0), text_size=size.small,
                                  text_halign=text.align_left, text_valign=text.align_top)
                             array.push(zoneBoxes, newBox)
                             array.push(zoneKeys, zoneId)
-                            array.push(zoneTops, array.get(tops30, k))
-                            array.push(zoneBottoms, array.get(bottoms30, k))
-                            array.push(zoneCheckFroms, array.get(checks30, k))
+                            array.push(zoneTops, high30)
+                            array.push(zoneBottoms, low30)
+                            array.push(zoneCheckFroms, start30)
                             array.push(zoneStrong, strongVolume)
                             array.push(drawnIds, zoneId)
                             newPrimary += 1
                         else if zIdx >= 0 and strongVolume and not array.get(zoneStrong, zIdx)
-                            // Upgrade a weak box once a strong-volume pair confirms it.
                             box ub = array.get(zoneBoxes, zIdx)
                             box.set_bgcolor(ub, color.new(base, strongOpacity))
                             box.set_border_color(ub, color.new(base, 10))
@@ -425,32 +494,50 @@ if array.size(times15) > 0
                             box.set_text(ub, "30m+15m · VOL OK")
                             array.set(zoneStrong, zIdx, true)
 
-            // Fallback is evaluated per 15m OB: only if THIS 15m block has no 30m match.
-            if not matched30ForThis15 and array.get(volumes15, j) and array.size(times10) > 0 and array.size(times5) > 0
-                int match10 = na
-                int match5 = na
-                for k = 0 to array.size(times10) - 1
-                    if na(match10) and f_recordUsable(impulses10, touched10, 600, maxAgeBars, k) and array.get(directions10, k) == dir15 and f_near(low15, high15, array.get(bottoms10, k), array.get(tops10, k), allowedGap)
-                        match10 := k
-                for k = 0 to array.size(times5) - 1
-                    if na(match5) and f_recordUsable(impulses5, touched5, 300, maxAgeBars, k) and array.get(directions5, k) == dir15 and f_near(low15, high15, array.get(bottoms5, k), array.get(tops5, k), allowedGap)
-                        match5 := k
-                if not na(match10) and not na(match5)
-                    string tripleId = "F|" + str.tostring(array.get(times15, j))
-                    if not f_hasId(drawnIds, tripleId)
-                        color base = dir15 == 1 ? color.teal : color.red
-                        box newBox = box.new(left=array.get(times15, j), top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
-                             bgcolor=color.new(base, strongOpacity), border_color=color.new(base, 10), border_width=2,
-                             text="15m+10m+5m · VOL OK", text_color=color.new(base, 0), text_size=size.small,
-                             text_halign=text.align_left, text_valign=text.align_top)
-                        array.push(zoneBoxes, newBox)
-                        array.push(zoneKeys, tripleId)
-                        array.push(zoneTops, high15)
-                        array.push(zoneBottoms, low15)
-                        array.push(zoneCheckFroms, array.get(checks15, j))
-                        array.push(zoneStrong, true)
-                        array.push(drawnIds, tripleId)
-                        newFallback += 1
+// Fallback 15m + 10m + 5m.
+if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 and array.size(times5) > 0
+    for j = 0 to array.size(times15) - 1
+        string tripleId = "F|" + str.tostring(array.get(times15, j))
+        if f_aliveNow(hits15, impulses15, 900, j) and array.get(volumes15, j) and not f_hasId(drawnIds, tripleId)
+            int dir15 = array.get(directions15, j)
+            float low15 = array.get(bottoms15, j)
+            float high15 = array.get(tops15, j)
+            int start15 = array.get(checks15, j)
+            int end15 = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+
+            // Skip if an untouched 30m block pairs with this 15m block (primary wins).
+            bool has30 = false
+            if array.size(times30) > 0
+                for k = 0 to array.size(times30) - 1
+                    if not has30 and f_aliveNow(hits30, impulses30, 1800, k) and array.get(directions30, k) == dir15 and f_near(array.get(bottoms30, k), array.get(tops30, k), low15, high15, allowedGap) and math.max(start15, array.get(checks30, k)) < end15
+                        has30 := true
+
+            bool found = false
+            if not has30
+                for a = 0 to array.size(times10) - 1
+                    if not found and array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
+                        int s2 = math.max(start15, array.get(checks10, a))
+                        int e2 = math.min(end15, f_windowEnd(hits10, impulses10, 600, a))
+                        if s2 < e2
+                            for b = 0 to array.size(times5) - 1
+                                if not found and array.get(directions5, b) == dir15 and f_near(low15, high15, array.get(bottoms5, b), array.get(tops5, b), allowedGap)
+                                    if math.max(s2, array.get(checks5, b)) < math.min(e2, f_windowEnd(hits5, impulses5, 300, b))
+                                        found := true
+
+            if found
+                color base = dir15 == 1 ? color.teal : color.red
+                box newBox = box.new(left=array.get(times15, j), top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
+                     bgcolor=color.new(base, strongOpacity), border_color=color.new(base, 10), border_width=2,
+                     text="15m+10m+5m · VOL OK", text_color=color.new(base, 0), text_size=size.small,
+                     text_halign=text.align_left, text_valign=text.align_top)
+                array.push(zoneBoxes, newBox)
+                array.push(zoneKeys, tripleId)
+                array.push(zoneTops, high15)
+                array.push(zoneBottoms, low15)
+                array.push(zoneCheckFroms, start15)
+                array.push(zoneStrong, true)
+                array.push(drawnIds, tripleId)
+                newFallback += 1
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
 while array.size(zoneBoxes) > maxZones
@@ -462,9 +549,9 @@ alertcondition(newPrimary > 0, "New 30m + 15m OB zone", "A new 30m Order Block z
 alertcondition(newFallback > 0, "New 15m + 10m + 5m OB zone", "A new 15m Order Block zone with 10m and 5m confirmation plus 15m volume was drawn on {{ticker}}.")
 
 // Notes:
-// - Works on any chart timeframe; detection always uses 30m / 15m / 10m / 5m data.
-// - A block is dropped the moment a wick re-enters it after price has left it;
-//   touched blocks are never drawn, drawn zones are deleted on first touch.
+// - Same zones on every chart timeframe; detection uses 30m / 15m / 10m / 5m data
+//   and touches are measured on 5m candles.
+// - On charts below 5m a touch is seen when the 5m candle closes.
 // - On 1D/1W the 5m intrabar history is limited by TradingView, so older zones
 //   may be missing there.
 // - Session filter applies only to the OB source candle, not the impulse candle.
