@@ -1106,6 +1106,7 @@ if barstate.islast and array.size(zoneLabels) > 0
                     diag := "\n1m entry: none · 1m blocks in the move " + str.tostring(nWin) + " (touched before confirm " + str.tostring(nTouched) + ")" +
                          " · move " + str.format_time(zLeft, "dd/MM HH:mm", infoTz) + "-" + str.format_time(zConfirm, "HH:mm", infoTz) +
                          " · 1m data from " + (array.size(times1) > 0 ? str.format_time(array.get(times1, 0), "dd/MM HH:mm", infoTz) : "-")
+                f_refreshLabel(z)
                 label.set_text(lb, label.get_text(lb) + diag)
 
 // Debug table for "explain one candle".
