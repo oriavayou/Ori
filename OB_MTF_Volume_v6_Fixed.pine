@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.10 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.11 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -532,8 +532,11 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                         // on the same 15m block. If the 30m block is touched later, the
                         // 15m zone may come back (it depends only on the current state,
                         // so every chart timeframe shows the same thing).
-                        array.set(has30Now, j, true)
-                        f_removeZoneByKey("F|" + str.tostring(array.get(times15, j)))
+                        // Only when the two blocks actually overlap in price: a 15m block
+                        // that is merely "near" a 30m block elsewhere keeps its own zone.
+                        if math.max(low30, array.get(bottoms15, j)) <= math.min(high30, array.get(tops15, j))
+                            array.set(has30Now, j, true)
+                            f_removeZoneByKey("F|" + str.tostring(array.get(times15, j)))
                         int zIdx = f_indexOf(zoneKeys, zoneId)
                         if zIdx == -1 and not f_hasId(drawnIds, zoneId)
                             box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
