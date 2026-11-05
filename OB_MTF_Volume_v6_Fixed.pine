@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.8 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.9 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -613,11 +613,39 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
             int src = array.get(rawSrcs, r)
             int j = array.indexof(times15, src)
             if j >= 0
+                int dir15 = array.get(directions15, j)
+                float low15 = array.get(bottoms15, j)
+                float high15 = array.get(tops15, j)
+                int start15 = array.get(checks15, j)
+                int end15 = na(knownUntil) ? start15 : math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+                // Count same-direction 10m / 5m blocks that are close enough in price,
+                // and how many of them were untouched at some time inside the 15m window.
+                int near10 = 0
+                int ok10 = 0
+                if array.size(times10) > 0
+                    for a = 0 to array.size(times10) - 1
+                        if array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
+                            near10 += 1
+                            if math.max(start15, array.get(checks10, a)) < math.min(end15, f_windowEnd(hits10, impulses10, 600, a))
+                                ok10 += 1
+                int near5 = 0
+                int ok5 = 0
+                if array.size(times5) > 0
+                    for b = 0 to array.size(times5) - 1
+                        if array.get(directions5, b) == dir15 and f_near(low15, high15, array.get(bottoms5, b), array.get(tops5, b), allowedGap)
+                            near5 += 1
+                            if math.max(start15, array.get(checks5, b)) < math.min(end15, f_windowEnd(hits5, impulses5, 300, b))
+                                ok5 += 1
+                string gapTxt = " (max gap " + str.tostring(allowedGap, "#.##") + ")"
                 string why = not f_aliveNow(hits15, impulses15, 900, j) ? "too old" :
                      not array.get(volumes15, j) ? "LOW VOL -> no zone" :
                      array.get(has30Now, j) ? "VOL OK -> part of 30m+15m zone" :
                      f_indexOf(zoneKeys, "F|" + str.tostring(src)) >= 0 ? "VOL OK -> zone" :
-                     "VOL OK -> no matching 10m + 5m"
+                     near10 == 0 ? "VOL OK -> no 10m block close enough" + gapTxt :
+                     ok10 == 0 ? "VOL OK -> 10m block touched before this 15m block was confirmed" :
+                     near5 == 0 ? "VOL OK -> no 5m block close enough" + gapTxt :
+                     ok5 == 0 ? "VOL OK -> 5m block touched before this 15m block was confirmed" :
+                     "VOL OK -> 10m and 5m blocks never valid at the same time"
                 box.set_text(array.get(rawBoxes, r), PAD + "15m " + f_hm(src) + " · " + why)
 
 alertcondition(newPrimary > 0, "New 30m + 15m OB zone", "A new 30m Order Block zone with 15m confirmation was drawn on {{ticker}}.")
