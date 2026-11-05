@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.22", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.23", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -65,7 +65,6 @@ string GROUP_ENTRY = "1m Entry"
 bool showEntry = input.bool(true, "Mark a 1m entry block for every zone", group=GROUP_ENTRY)
 float entryATR = input.float(0.5, "Max distance of the 1m block from the zone (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_ENTRY,
      tooltip="0 = the 1m block must touch or overlap the zone. Larger values also accept 1m blocks just above / below the zone.")
-string entryHitAction = input.string("Remove zone + entry", "When price reaches the 1m entry", options=["Remove zone + entry", "Remove entry only"], group=GROUP_ENTRY)
 string entryPick = input.string("Extreme", "Which 1m block to use", options=["Extreme", "Closest"], group=GROUP_ENTRY,
      tooltip="Extreme = the highest 1m block for a sell zone / the lowest for a buy zone (the origin of the move). Closest = the 1m block nearest to the zone.")
 color entryColor = input.color(color.purple, "Entry box colour (long and short)", group=GROUP_ENTRY)
@@ -685,8 +684,8 @@ f_removeZoneByKey(string key) =>
     if idx >= 0
         f_removeZone(idx)
 
-// First touch of a 1m entry: fire the alert, then remove the whole zone (default)
-// or only the entry box (the label keeps the entry price with a check mark).
+// First touch of a 1m entry: fire the alert and remove everything (zone + entry).
+// A touch of the zone itself does the same just below.
 int newEntryHit = 0
 if array.size(zoneBoxes) > 0
     for z = array.size(zoneBoxes) - 1 to 0
@@ -694,13 +693,7 @@ if array.size(zoneBoxes) > 0
         if not na(eb) and not array.get(zoneEntryHit, z)
             if not na(f_firstTouch(curT, curH, curL, array.get(zoneEntryChecks, z), array.get(zoneEntryBottoms, z), array.get(zoneEntryTops, z)))
                 newEntryHit += 1
-                if entryHitAction == "Remove zone + entry"
-                    f_removeZone(z)
-                else
-                    box.delete(eb)
-                    array.set(zoneEntryBoxes, z, box(na))
-                    array.set(zoneEntryHit, z, true)
-                    f_refreshLabel(z)
+                f_removeZone(z)
 
 // A zone (and its entry) disappears completely on its first touch.
 if array.size(zoneBoxes) > 0
