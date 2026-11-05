@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.26", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.27", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -107,6 +107,12 @@ bool showRaw10 = input.bool(false, "Show every raw 10m OB (dotted)", group=GROUP
 bool showRaw5 = input.bool(false, "Show every raw 5m OB (dotted)", group=GROUP_DEBUG)
 bool showZoneInfo = input.bool(false, "Show which blocks built each zone (source candle times)", group=GROUP_DEBUG)
 string infoTz = input.string("Asia/Jerusalem", "Time zone for the times shown", group=GROUP_DEBUG)
+
+string GROUP_EXPLAIN = "Debug: explain one candle"
+bool explainOn = input.bool(false, "Explain why a candle is / is not a block", group=GROUP_EXPLAIN,
+     tooltip="Pick the candle you see as the block. A table shows, for each of the next candles, which rule passed or failed when it is tested as the impulse. Use a chart timeframe equal to or lower than the timeframe chosen here.")
+int explainTime = input.time(timestamp("2026-11-05T17:30:00+02:00"), "Block candle time", group=GROUP_EXPLAIN)
+string explainTf = input.string("15", "Timeframe of that candle", options=["30", "15", "10", "5", "1"], group=GROUP_EXPLAIN)
 
 // -----------------------------------------------------------------------------
 // OB scanner, evaluated independently in each timeframe context.
@@ -355,6 +361,66 @@ f_indexOf(array<string> ids, string id) =>
             if idx == -1 and array.get(ids, i) == id
                 idx := i
     idx
+
+// -----------------------------------------------------------------------------
+// Debug: explain one candle. Runs in the chosen timeframe. When the candle that
+// contains `explainTime` is j candles back (2..searchLen+1), bar [1] is a
+// possible impulse for it; every rule is reported with its value.
+// -----------------------------------------------------------------------------
+f_explain() =>
+    bool inTokyo = useTokyo and not na(time(timeframe.period, tokyoSession, "Asia/Tokyo"))
+    bool inLondon = useLondon and not na(time(timeframe.period, londonSession, "Europe/London"))
+    bool inNewYork = useNewYork and not na(time(timeframe.period, newYorkSession, "America/New_York"))
+    bool inAllowedSession = inTokyo or inLondon or inNewYork
+    float atrNow = ta.atr(atrLen)
+    float avgVol = ta.sma(volume, volLen)
+    float structHigh = ta.highest(high, structureLen)
+    float structLow = ta.lowest(low, structureLen)
+    string line = ""
+    if explainOn
+        for j = 2 to searchLen + 1
+            if time[j] <= explainTime and explainTime < time_close[j]
+                bool bull = close[1] > open[1]
+                string ok = " ✓"
+                string bad = " ✗"
+                bool oppositeOK = bull ? close[j] < open[j] : close[j] > open[j]
+                float body1 = math.abs(close[1] - open[1])
+                float bAtr = body1 / atrNow[1]
+                float bRng = body1 / math.max(high[1] - low[1], syminfo.mintick)
+                float lvl = bull ? structHigh[2] : structLow[2]
+                bool bos = bull ? close[1] > lvl : close[1] < lvl
+                bool fvg = bull ? low > high[2] : high < low[2]
+                int src = na
+                for i = 2 to searchLen + 1
+                    bool opp = bull ? close[i] < open[i] : close[i] > open[i]
+                    if na(src) and opp and (not restrictToSessions or inAllowedSession[i])
+                        src := i
+                bool lastOpp = not na(src) and src == j
+                bool sesOK = not restrictToSessions or inAllowedSession[j]
+                float b = math.min(open[j], close[j])
+                float t = math.max(open[j], close[j])
+                bool leftB = false
+                bool ret = false
+                for k = j - 1 to 0
+                    if leftB and high[k] >= b and low[k] <= t
+                        ret := true
+                    if close[k] > t or close[k] < b
+                        leftB := true
+                float peak = 0.0
+                for k = j + volumeWindow to math.max(j - volumeWindow, 0)
+                    peak := math.max(peak, nz(volume[k]))
+                float base = avgVol[j + volumeWindow + 1]
+                line := "impulse " + f_hm(time[1]) + (bull ? " ▲" : " ▼") +
+                     " | body/ATR " + str.tostring(bAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (bAtr >= impulseATR ? ok : bad) +
+                     " | body/range " + str.tostring(bRng, "#.##") + " (" + str.tostring(minBodyPct) + ")" + (bRng >= minBodyPct ? ok : bad) +
+                     " | break " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (bos ? ok : bad) +
+                     " | FVG" + (fvg ? ok : bad) +
+                     " | block colour" + (oppositeOK ? ok : bad) +
+                     " | last opposite candle" + (lastOpp ? ok : bad + (na(src) ? "" : " (" + f_hm(time[src]) + ")")) +
+                     " | session" + (sesOK ? ok : bad) +
+                     " | not re-entered" + (ret ? bad : ok) +
+                     " | vol x" + (base > 0 ? str.tostring(peak / base, "#.#") : "-")
+    [time[1], line]
 
 // -----------------------------------------------------------------------------
 // Fetch 30m / 15m / 10m / 5m OB events on ANY chart timeframe.
@@ -958,6 +1024,24 @@ if barstate.islast and array.size(zoneLabels) > 0
                 y := lastY - minSpacing
             label.set_xy(lb, bar_index + 2, y)
             lastY := y
+
+// Debug table for "explain one candle".
+[exT, exLine] = request.security(syminfo.tickerid, explainTf, f_explain(), lookahead=barmerge.lookahead_on)
+var array<int> exTimes = array.new<int>()
+var array<string> exLines = array.new<string>()
+if explainOn and exLine != "" and array.indexof(exTimes, exT) == -1
+    array.push(exTimes, exT)
+    array.push(exLines, exLine)
+var table exTable = table.new(position.bottom_left, 1, 10, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1)
+if barstate.islast and explainOn
+    table.cell(exTable, 0, 0, explainTf + "m block candle " + f_hm(explainTime) + " - next candles tested as impulse (needed value in brackets):",
+         text_color=color.black, text_size=size.small, text_halign=text.align_left)
+    if array.size(exLines) == 0
+        table.cell(exTable, 0, 1, "No data: check the time, and use a chart timeframe equal to or lower than " + explainTf + "m.",
+             text_color=color.red, text_size=size.small, text_halign=text.align_left)
+    else
+        for n = 0 to math.min(array.size(exLines), 8) - 1
+            table.cell(exTable, 0, n + 1, array.get(exLines, n), text_color=color.black, text_size=size.small, text_halign=text.align_left)
 
 alertcondition(newEntryHit > 0, "1m entry reached", "Price reached the 1m entry block of an Order Block zone on {{ticker}}.")
 alertcondition(newFallback > 0, "New 15m + 10m + 5m OB zone", "A new 15m Order Block zone with 10m and 5m confirmation plus 15m volume was drawn on {{ticker}}.")
