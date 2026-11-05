@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.35", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.36", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -693,6 +693,7 @@ var array<box> zoneEntryBoxes = array.new<box>()
 var array<float> zoneEntryTops = array.new<float>()
 var array<float> zoneEntryBottoms = array.new<float>()
 var array<int> zoneEntryChecks = array.new<int>()
+var array<int> zoneEntrySrcs = array.new<int>()
 var array<bool> zoneEntryHit = array.new<bool>()
 var array<label> zoneLabels = array.new<label>()
 var array<string> zoneTexts = array.new<string>()
@@ -725,6 +726,7 @@ f_pushZoneMeta(int dir, int left, string txt, string info) =>
     array.push(zoneEntryTops, na)
     array.push(zoneEntryBottoms, na)
     array.push(zoneEntryChecks, na)
+    array.push(zoneEntrySrcs, na)
     array.push(zoneEntryHit, false)
 
 // Best untouched 1m block for zone z among 1m records [fromIdx .. last]:
@@ -784,6 +786,7 @@ f_setEntry(int z, int i) =>
     array.set(zoneEntryTops, z, t1)
     array.set(zoneEntryBottoms, z, b1)
     array.set(zoneEntryChecks, z, array.get(checks1, i))
+    array.set(zoneEntrySrcs, z, array.get(times1, i))
     f_refreshLabel(z)
 
 f_removeZone(int z) =>
@@ -804,6 +807,7 @@ f_removeZone(int z) =>
     array.remove(zoneEntryTops, z)
     array.remove(zoneEntryBottoms, z)
     array.remove(zoneEntryChecks, z)
+    array.remove(zoneEntrySrcs, z)
     array.remove(zoneEntryHit, z)
     label lb = array.get(zoneLabels, z)
     if not na(lb)
@@ -1078,6 +1082,31 @@ if barstate.islast and array.size(zoneLabels) > 0
                 y := lastY - minSpacing
             label.set_xy(lb, bar_index + 2, y)
             lastY := y
+            // Debug: which 1m block is the entry, or why there is none.
+            if showZoneInfo
+                string diag = ""
+                if not na(array.get(zoneEntrySrcs, z))
+                    diag := "\n1m entry block " + str.format_time(array.get(zoneEntrySrcs, z), "dd/MM HH:mm", infoTz)
+                else
+                    int zDir = array.get(zoneDirs, z)
+                    int zLeft = array.get(zoneLefts, z)
+                    int zConfirm = array.get(zoneCheckFroms, z)
+                    float maxGap = atr30 * entryATR
+                    int nWin = 0
+                    int nTouched = 0
+                    if array.size(times1) > 0
+                        for i = 0 to array.size(times1) - 1
+                            int t1 = array.get(times1, i)
+                            float gap = math.max(0.0, math.max(array.get(bottoms1, i), array.get(zoneBottoms, z)) - math.min(array.get(tops1, i), array.get(zoneTops, z)))
+                            if array.get(directions1, i) == zDir and t1 >= zLeft and t1 <= zConfirm and gap <= maxGap
+                                nWin += 1
+                                int h1 = array.get(hits1, i)
+                                if not na(h1) and h1 <= zConfirm
+                                    nTouched += 1
+                    diag := "\n1m entry: none · 1m blocks in the move " + str.tostring(nWin) + " (touched before confirm " + str.tostring(nTouched) + ")" +
+                         " · move " + str.format_time(zLeft, "dd/MM HH:mm", infoTz) + "-" + str.format_time(zConfirm, "HH:mm", infoTz) +
+                         " · 1m data from " + (array.size(times1) > 0 ? str.format_time(array.get(times1, 0), "dd/MM HH:mm", infoTz) : "-")
+                label.set_text(lb, label.get_text(lb) + diag)
 
 // Debug table for "explain one candle".
 [exT, exLine] = request.security(syminfo.tickerid, explainTf, f_explain(), lookahead=barmerge.lookahead_on)
