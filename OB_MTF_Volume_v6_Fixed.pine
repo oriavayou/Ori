@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.12 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.13 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -16,7 +16,7 @@ indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.12 Any TF]", overlay=true, 
 // - v6.7: debug boxes show only untouched blocks, with their volume status.
 // - v6.12: three volume grades. Ratio = highest volume of the impulse candle and
 //   the candles before it / average volume before the impulse:
-//     VOL STRONG  >= "Very strong volume threshold" (default x2.5) - darkest box, thick border
+//     VOL STRONG  >= "Very strong volume threshold" (default x2.0) - darkest box, thick border
 //     VOL OK      >= "Good volume threshold" (default x1.5)
 //     LOW VOL     below that (30m+15m zones only, drawn faint)
 //   The ratio is printed on every zone, e.g. "VOL STRONG x3.1".
@@ -43,11 +43,11 @@ int maxAgeBars = input.int(100, "Maximum OB age (bars of its own timeframe)", mi
 string GROUP_VOL = "Volume Filter (chart symbol)"
 int volLen = input.int(20, "Volume average length", minval=2, group=GROUP_VOL)
 float volMultiplier = input.float(1.50, "Good volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
-float volStrongMultiplier = input.float(2.50, "Very strong volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
+float volStrongMultiplier = input.float(2.0, "Very strong volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
 int volumeWindow = input.int(3, "Volume scan window around impulse", minval=1, maxval=5, group=GROUP_VOL)
 
 string GROUP_MTF = "Multi-timeframe Confirmation"
-float nearATR = input.float(0.25, "Allowed distance between OBs (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_MTF)
+float nearATR = input.float(2.3, "Allowed distance between OBs (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_MTF)
 
 string GROUP_SESSIONS = "Valid OB Creation Sessions"
 bool restrictToSessions = input.bool(true, "Only accept OB source candles during these sessions", group=GROUP_SESSIONS,
@@ -65,7 +65,7 @@ int maxRecordsPerTF = input.int(80, "Maximum OB records per timeframe", minval=1
 int veryStrongOpacity = input.int(55, "Very strong volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 int strongOpacity = input.int(70, "Good volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
 int weakOpacity = input.int(86, "Weak-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
-string labelSizeInput = input.string("Normal", "Zone text size", options=["Small", "Normal", "Large"], group=GROUP_DRAW)
+string labelSizeInput = input.string("Small", "Zone text size", options=["Small", "Normal", "Large"], group=GROUP_DRAW)
 bool autoTextColor = input.bool(true, "Zone text: automatic colour (black on light chart, white on dark)", group=GROUP_DRAW)
 color customTextColor = input.color(color.black, "Zone text colour (when automatic is off)", group=GROUP_DRAW)
 
