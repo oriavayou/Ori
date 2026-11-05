@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.36", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.37", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -651,6 +651,7 @@ else
          l5t, l5i, l5c, l5b, l5p, l5d, l5v, maxRecordsPerTF, bufT, bufH, bufL, showRaw5, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "5m", line.style_dotted)
 
 int added1 = 0
+var int first1Seen = na
 if htf1
     added1 := f_ingest(times1, impulses1, checks1, hits1, bottoms1, tops1, directions1, volumes1,
          array.from(h1t), array.from(h1i), array.from(h1c), array.from(h1b), array.from(h1p), array.from(h1d), array.from(h1v),
@@ -658,6 +659,8 @@ if htf1
 else
     added1 := f_ingest(times1, impulses1, checks1, hits1, bottoms1, tops1, directions1, volumes1,
          l1t, l1i, l1c, l1b, l1p, l1d, l1v, 300, bufT, bufH, bufL, false, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "1m", line.style_dotted)
+if na(first1Seen) and array.size(times1) > 0
+    first1Seen := array.get(times1, 0)
 
 // Debug boxes disappear on their first touch, like the zones.
 if array.size(rawBoxes) > 0
@@ -1105,7 +1108,8 @@ if barstate.islast and array.size(zoneLabels) > 0
                                     nTouched += 1
                     diag := "\n1m entry: none · 1m blocks in the move " + str.tostring(nWin) + " (touched before confirm " + str.tostring(nTouched) + ")" +
                          " · move " + str.format_time(zLeft, "dd/MM HH:mm", infoTz) + "-" + str.format_time(zConfirm, "HH:mm", infoTz) +
-                         " · 1m data from " + (array.size(times1) > 0 ? str.format_time(array.get(times1, 0), "dd/MM HH:mm", infoTz) : "-")
+                         " · 1m data on this chart starts " + (na(first1Seen) ? "-" : str.format_time(first1Seen, "dd/MM HH:mm", infoTz)) +
+                         (not na(first1Seen) and first1Seen > zLeft ? " (AFTER this move: TradingView gives no older 1m data on this timeframe)" : "")
                 f_refreshLabel(z)
                 label.set_text(lb, label.get_text(lb) + diag)
 
