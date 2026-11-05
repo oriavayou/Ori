@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.34", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.35", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -213,14 +213,14 @@ f_scanOB() =>
         float b = math.min(open[src], close[src])
         float t = math.max(open[src], close[src])
         // Walk from the candle after the source up to bar [0]: once a candle has
-        // CLOSED beyond the block candle (above its high for a buy block, below its
-        // low for a sell block = the break), any later wick inside the block kills it.
+        // CLOSED outside the block body in the direction of the move (above it for a
+        // buy block, below it for a sell block), any later wick back inside kills it.
         bool leftBlock = false
         bool retouched = false
         for j = src - 1 to 0
             if leftBlock and high[j] >= b and low[j] <= t
                 retouched := true
-            if dir == 1 ? close[j] > high[src] : close[j] < low[src]
+            if dir == 1 ? close[j] > t : close[j] < b
                 leftBlock := true
         // Volume: highest volume of the block candle and up to `volumeWindow` candles
         // before and after it (after = only candles that already closed, so at
@@ -455,7 +455,7 @@ f_explain() =>
                 for k = j - 1 to 0
                     if leftB and high[k] >= b and low[k] <= t
                         ret := true
-                    if bull ? close[k] > high[j] : close[k] < low[j]
+                    if bull ? close[k] > t : close[k] < b
                         leftB := true
                 float peak = 0.0
                 for k = j + volumeWindow to math.max(j - volumeWindow, 0)
