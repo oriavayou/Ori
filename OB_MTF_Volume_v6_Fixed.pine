@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.4 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.5 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -60,6 +60,7 @@ int weakOpacity = input.int(86, "Weak-volume box transparency", minval=0, maxval
 string GROUP_DEBUG = "Debug"
 bool showRaw30 = input.bool(false, "Show every raw 30m OB (dashed)", group=GROUP_DEBUG)
 bool showRaw15 = input.bool(false, "Show every raw 15m OB (dotted)", group=GROUP_DEBUG)
+bool showZoneInfo = input.bool(false, "Show which blocks built each zone (source candle times)", group=GROUP_DEBUG)
 
 // -----------------------------------------------------------------------------
 // OB scanner, evaluated independently in each timeframe context.
@@ -244,6 +245,10 @@ f_windowEnd(array<int> touchedAts, array<int> impulseTimes, int tfSeconds, int i
 // Untouched and not expired right now.
 f_aliveNow(array<int> touchedAts, array<int> impulseTimes, int tfSeconds, int index) =>
     na(array.get(touchedAts, index)) and time <= array.get(impulseTimes, index) + maxAgeBars * tfSeconds * 1000
+
+// Candle time as HH:mm in the chart's exchange time zone.
+f_hm(int t) =>
+    na(t) ? "-" : str.format_time(t, "HH:mm", syminfo.timezone)
 
 f_near(float lowA, float highA, float lowB, float highB, float tolerance) =>
     bool valid = not na(lowA) and not na(highA) and not na(lowB) and not na(highB) and not na(tolerance)
@@ -492,7 +497,8 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                         if alive30 and zIdx == -1 and not f_hasId(drawnIds, zoneId)
                             box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
                                  bgcolor=color.new(base, strongVolume ? strongOpacity : weakOpacity), border_color=color.new(base, strongVolume ? 10 : 50), border_width=strongVolume ? 2 : 1,
-                                 text=strongVolume ? "30m+15m · VOL OK" : "30m+15m · LOW VOL", text_color=color.new(base, 0), text_size=size.small,
+                                 text=(strongVolume ? "30m+15m · VOL OK" : "30m+15m · LOW VOL") + (showZoneInfo ? "\n30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) : ""),
+                                 text_color=color.new(base, 0), text_size=size.small,
                                  text_halign=text.align_left, text_valign=text.align_top)
                             array.push(zoneBoxes, newBox)
                             array.push(zoneKeys, zoneId)
@@ -507,7 +513,7 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0
                             box.set_bgcolor(ub, color.new(base, strongOpacity))
                             box.set_border_color(ub, color.new(base, 10))
                             box.set_border_width(ub, 2)
-                            box.set_text(ub, "30m+15m · VOL OK")
+                            box.set_text(ub, "30m+15m · VOL OK" + (showZoneInfo ? "\n30m " + f_hm(src30) + " · 15m " + f_hm(array.get(times15, j)) : ""))
                             array.set(zoneStrong, zIdx, true)
 
 // Fallback 15m + 10m + 5m.
@@ -522,6 +528,8 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
             int end15 = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
 
             bool found = false
+            int match10 = na
+            int match5 = na
             if start15 < end15
                 for a = 0 to array.size(times10) - 1
                     if not found and array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
@@ -532,12 +540,15 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                                 if not found and array.get(directions5, b) == dir15 and f_near(low15, high15, array.get(bottoms5, b), array.get(tops5, b), allowedGap)
                                     if math.max(s2, array.get(checks5, b)) < math.min(e2, f_windowEnd(hits5, impulses5, 300, b))
                                         found := true
+                                        match10 := a
+                                        match5 := b
 
             if found
                 color base = dir15 == 1 ? color.teal : color.red
                 box newBox = box.new(left=array.get(times15, j), top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
                      bgcolor=color.new(base, strongOpacity), border_color=color.new(base, 10), border_width=2,
-                     text="15m+10m+5m · VOL OK", text_color=color.new(base, 0), text_size=size.small,
+                     text="15m+10m+5m · VOL OK" + (showZoneInfo ? "\n15m " + f_hm(array.get(times15, j)) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""),
+                     text_color=color.new(base, 0), text_size=size.small,
                      text_halign=text.align_left, text_valign=text.align_top)
                 array.push(zoneBoxes, newBox)
                 array.push(zoneKeys, tripleId)
