@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.33", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.34", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -48,7 +48,7 @@ indicator("MTF Order Blocks v6.33", shorttitle="MTF OB", overlay=true, max_boxes
 string GROUP_OB = "Order Block Detection"
 int atrLen = input.int(14, "ATR length", minval=2, group=GROUP_OB)
 string impulseMode = input.string("Move (several candles)", "Impulse", options=["Move (several candles)", "Single candle"], group=GROUP_OB,
-     tooltip="Move = the break of the block candle may take several candles: the first candle that closes beyond the block candle, with the whole move since the block >= 'Impulse body / ATR' and an FVG somewhere in the move. Single candle = one big candle must do it all.")
+     tooltip="Move = the break of the block candle may take several candles: a candle closes beyond the block candle, the whole move since the block is >= 'Impulse body / ATR' and there is an FVG somewhere in the move (the FVG may form a few candles after the first break). Single candle = one big candle must do it all.")
 string bosMode = input.string("Block candle", "Impulse must break", options=["Block candle", "Last N candles"], group=GROUP_OB,
      tooltip="Block candle = the impulse closes above the high of the block candle (below its low for a sell block). Last N candles = the impulse closes above the highest high of the N candles before it (stricter: an old spike can block it).")
 int structureLen = input.int(5, "Break of structure lookback (Last N candles)", minval=2, maxval=30, group=GROUP_OB)
@@ -174,9 +174,11 @@ f_scanOB() =>
         if not brokeBlock
             src := na
 
-    // "Move" mode: bar [1] is the FIRST candle that closes beyond the block candle
-    // (last opposite candle within searchLen). The whole move from the block close
-    // to bar [1] must be >= impulseATR x ATR, and an FVG must exist inside the move.
+    // "Move" mode: bar [1] closes beyond the block candle (the last opposite candle
+    // within searchLen), the whole move from the block close to bar [1] is
+    // >= impulseATR x ATR, and an FVG exists inside the move. The conditions may be
+    // completed a few candles after the first break (e.g. the FVG forms later); the
+    // block is stored once, the first time everything is true.
     if impulseMode == "Move (several candles)"
         src := na
         dir := 0
@@ -189,18 +191,14 @@ f_scanOB() =>
                     sB := i
             if dir == 0 and not na(sB)
                 float lvlB = want == 1 ? high[sB] : low[sB]
-                bool firstBreak = want == 1 ? close[1] > lvlB : close[1] < lvlB
-                if sB > 2
-                    for k = sB - 1 to 2
-                        if want == 1 ? close[k] > lvlB : close[k] < lvlB
-                            firstBreak := false
+                bool beyond = want == 1 ? close[1] > lvlB : close[1] < lvlB
                 float leg = want == 1 ? close[1] - close[sB] : close[sB] - close[1]
                 bool bigLeg = not na(atrNow[1]) and leg >= atrNow[1] * impulseATR
                 bool fvgLeg = not requireFVG
                 for k = sB - 1 to 1
                     if want == 1 ? low[k - 1] > high[k + 1] : high[k - 1] < low[k + 1]
                         fvgLeg := true
-                if firstBreak and bigLeg and fvgLeg
+                if beyond and bigLeg and fvgLeg
                     src := sB
                     dir := want
 
@@ -436,12 +434,7 @@ f_explain() =>
                 float lvl = moveM or bosMode == "Block candle" ? (bull ? high[j] : low[j]) : (bull ? structHigh[2] : structLow[2])
                 bool bos = bull ? close[1] > lvl : close[1] < lvl
                 bool fvg = bull ? low > high[2] : high < low[2]
-                // Move mode: first close beyond the block, size of the whole move, FVG anywhere in it.
-                bool firstBreak = bos
-                if j > 2
-                    for k = j - 1 to 2
-                        if bull ? close[k] > lvl : close[k] < lvl
-                            firstBreak := false
+                // Move mode: close beyond the block, size of the whole move, FVG anywhere in it.
                 float leg = bull ? close[1] - close[j] : close[j] - close[1]
                 float legAtr = leg / atrNow[1]
                 bool fvgLeg = false
@@ -469,7 +462,7 @@ f_explain() =>
                     peak := math.max(peak, nz(volume[k]))
                 float base = avgVol[j + volumeWindow + 1]
                 string rules = moveM ?
-                     "\nfirst close beyond block " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (firstBreak ? ok : bad) +
+                     "\nclose beyond block " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (bos ? ok : bad) +
                      "\nmove/ATR " + str.tostring(legAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (legAtr >= impulseATR ? ok : bad) +
                      "\nFVG in the move" + (fvgLeg or not requireFVG ? ok : bad) :
                      "\nbody/ATR " + str.tostring(bAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (bAtr >= impulseATR ? ok : bad) +
