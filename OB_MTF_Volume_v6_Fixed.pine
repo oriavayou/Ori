@@ -1,5 +1,5 @@
 //@version=6
-indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.9 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("XAUUSD MTF Order Blocks + Tick Volume [v6.10 Any TF]", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -215,10 +215,12 @@ f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, ar
 f_rawBox(array<box> store, array<float> rTops, array<float> rBottoms, array<int> rChecks, array<string> rTfs, array<int> rSrcs,
          int srcTime, int checkFrom, float bottom, float top, int direction, bool volOK, string tfText, string lineStyle) =>
     color base = direction == 1 ? color.teal : color.red
+    // 30m/15m text on the left, 10m in the middle, 5m on the right, so stacked
+    // debug boxes at the same price do not print over each other.
     box bx = box.new(left=srcTime, top=top, right=time, bottom=bottom, xloc=xloc.bar_time, extend=extend.right,
          bgcolor=color.new(base, 100), border_color=color.new(base, 20), border_width=1, border_style=lineStyle,
          text=PAD + tfText + (volOK ? " · VOL OK" : " · LOW VOL"), text_color=zoneTextColor, text_size=size.small,
-         text_halign=text.align_left, text_valign=text.align_bottom)
+         text_halign=tfText == "10m" ? text.align_center : tfText == "5m" ? text.align_right : text.align_left, text_valign=text.align_bottom)
     array.push(store, bx)
     array.push(rTops, top)
     array.push(rBottoms, bottom)
