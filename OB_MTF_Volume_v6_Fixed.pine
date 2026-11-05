@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.15", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.16", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -14,6 +14,10 @@ indicator("MTF Order Blocks v6.15", shorttitle="MTF OB", overlay=true, max_boxes
 //   with its 15m block (v6.4 hid it forever, so a 15m block whose 30m partner
 //   was touched got no zone at all).
 // - v6.7: debug boxes show only untouched blocks, with their volume status.
+// - v6.16: every zone gets a 1m ENTRY block: the closest untouched same-direction
+//   1m OB formed since the zone's source candle, within "Max distance" of the zone
+//   (it does not have to overlap the zone). Blue = buy entry, orange = sell entry.
+//   The line price is the entry (top of a buy block / bottom of a sell block).
 // - v6.15: a 30m zone needs a 15m AND a 5m block (30m+15m+5m). If a 10m block is
 //   valid at the same moment as well, it is SUPER STRONG (darkest box, border 4).
 // - v6.12: three volume grades. Ratio = highest volume of the impulse candle and
@@ -50,6 +54,12 @@ int volumeWindow = input.int(3, "Volume scan window around impulse", minval=1, m
 
 string GROUP_MTF = "Multi-timeframe Confirmation"
 float nearATR = input.float(2.3, "Allowed distance between OBs (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_MTF)
+
+string GROUP_ENTRY = "1m Entry"
+bool showEntry = input.bool(true, "Mark a 1m entry block for every zone", group=GROUP_ENTRY)
+float entryATR = input.float(0.5, "Max distance of the 1m block from the zone (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_ENTRY,
+     tooltip="0 = the 1m block must touch or overlap the zone. Larger values also accept 1m blocks just above / below the zone.")
+int entryOpacity = input.int(70, "Entry box transparency", minval=0, maxval=100, group=GROUP_ENTRY)
 
 string GROUP_SESSIONS = "Valid OB Creation Sessions"
 bool restrictToSessions = input.bool(true, "Only accept OB source candles during these sessions", group=GROUP_SESSIONS,
@@ -346,6 +356,11 @@ bool htf5 = chartSec <= 300
 [l10t, l10i, l10c, l10b, l10p, l10d, l10v] = request.security_lower_tf(syminfo.tickerid, "10", f_scanOB(), ignore_invalid_timeframe=true)
 [l5t, l5i, l5c, l5b, l5p, l5d, l5v] = request.security_lower_tf(syminfo.tickerid, "5", f_scanOB(), ignore_invalid_timeframe=true)
 
+// 1m blocks, used only for entries.
+bool htf1 = chartSec <= 60
+[h1t, h1i, h1c, h1b, h1p, h1d, h1v] = request.security(syminfo.tickerid, "1", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[l1t, l1i, l1c, l1b, l1p, l1d, l1v] = request.security_lower_tf(syminfo.tickerid, "1", f_scanOB(), ignore_invalid_timeframe=true)
+
 // 30m ATR on every chart timeframe, so the confluence tolerance never changes.
 float atr30 = request.security(syminfo.tickerid, "30", ta.atr(14)[1], lookahead=barmerge.lookahead_on)
 float allowedGap = atr30 * nearATR
@@ -421,6 +436,15 @@ var array<float> tops5 = array.new<float>()
 var array<int> directions5 = array.new<int>()
 var array<float> volumes5 = array.new<float>()
 
+var array<int> times1 = array.new<int>()
+var array<int> impulses1 = array.new<int>()
+var array<int> checks1 = array.new<int>()
+var array<int> hits1 = array.new<int>()
+var array<float> bottoms1 = array.new<float>()
+var array<float> tops1 = array.new<float>()
+var array<int> directions1 = array.new<int>()
+var array<float> volumes1 = array.new<float>()
+
 var array<box> rawBoxes = array.new<box>()
 var array<float> rawTops = array.new<float>()
 var array<float> rawBottoms = array.new<float>()
@@ -438,6 +462,7 @@ f_updateRecords(checks30, hits30, bottoms30, tops30, curT, curH, curL)
 f_updateRecords(checks15, hits15, bottoms15, tops15, curT, curH, curL)
 f_updateRecords(checks10, hits10, bottoms10, tops10, curT, curH, curL)
 f_updateRecords(checks5, hits5, bottoms5, tops5, curT, curH, curL)
+f_updateRecords(checks1, hits1, bottoms1, tops1, curT, curH, curL)
 
 // 2) Add the new candles to the buffer.
 if array.size(curT) > 0
@@ -483,6 +508,15 @@ else
     f_ingest(times5, impulses5, checks5, hits5, bottoms5, tops5, directions5, volumes5,
          l5t, l5i, l5c, l5b, l5p, l5d, l5v, maxRecordsPerTF, bufT, bufH, bufL, showRaw5, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "5m", line.style_dotted)
 
+int added1 = 0
+if htf1
+    added1 := f_ingest(times1, impulses1, checks1, hits1, bottoms1, tops1, directions1, volumes1,
+         array.from(h1t), array.from(h1i), array.from(h1c), array.from(h1b), array.from(h1p), array.from(h1d), array.from(h1v),
+         300, bufT, bufH, bufL, false, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "1m", line.style_dotted)
+else
+    added1 := f_ingest(times1, impulses1, checks1, hits1, bottoms1, tops1, directions1, volumes1,
+         l1t, l1i, l1c, l1b, l1p, l1d, l1v, 300, bufT, bufH, bufL, false, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "1m", line.style_dotted)
+
 // Debug boxes disappear on their first touch, like the zones.
 if array.size(rawBoxes) > 0
     for r = array.size(rawBoxes) - 1 to 0
@@ -512,6 +546,68 @@ var array<float> zoneBottoms = array.new<float>()
 var array<int> zoneCheckFroms = array.new<int>()
 var array<int> zoneGrade = array.new<int>()
 var array<string> drawnIds = array.new<string>()
+var array<int> zoneDirs = array.new<int>()
+var array<int> zoneLefts = array.new<int>()
+var array<int> zoneCreated = array.new<int>()
+var array<box> zoneEntryBoxes = array.new<box>()
+var array<float> zoneEntryTops = array.new<float>()
+var array<float> zoneEntryBottoms = array.new<float>()
+var array<int> zoneEntryChecks = array.new<int>()
+var array<bool> zoneEntryHit = array.new<bool>()
+
+// Entry bookkeeping for a zone that was just pushed.
+f_pushZoneMeta(int dir, int left) =>
+    array.push(zoneDirs, dir)
+    array.push(zoneLefts, left)
+    array.push(zoneCreated, time)
+    array.push(zoneEntryBoxes, box(na))
+    array.push(zoneEntryTops, na)
+    array.push(zoneEntryBottoms, na)
+    array.push(zoneEntryChecks, na)
+    array.push(zoneEntryHit, false)
+
+// Best untouched 1m block for zone z among 1m records [fromIdx .. last]:
+// same direction, formed at or after the zone's source candle, within the entry
+// distance of the zone. Closest wins; on a tie, the one price reaches first
+// (highest for a bullish zone, lowest for a bearish zone).
+f_findEntry(int z, int fromIdx) =>
+    int best = na
+    float bestGap = na
+    float zTop = array.get(zoneTops, z)
+    float zBot = array.get(zoneBottoms, z)
+    int zDir = array.get(zoneDirs, z)
+    int zLeft = array.get(zoneLefts, z)
+    float maxGap = atr30 * entryATR
+    int startIdx = math.max(fromIdx, 0)
+    if array.size(times1) > startIdx and not na(maxGap) and not na(knownUntil)
+        for i = startIdx to array.size(times1) - 1
+            if array.get(directions1, i) == zDir and na(array.get(hits1, i)) and array.get(times1, i) >= zLeft and array.get(checks1, i) <= knownUntil
+                float b1 = array.get(bottoms1, i)
+                float t1 = array.get(tops1, i)
+                float gap = math.max(0.0, math.max(b1, zBot) - math.min(t1, zTop))
+                if gap <= maxGap
+                    bool better = na(best) or gap < bestGap or (gap == bestGap and (zDir == 1 ? t1 > array.get(tops1, best) : b1 < array.get(bottoms1, best)))
+                    if better
+                        best := i
+                        bestGap := gap
+    best
+
+f_entryText(int dir, float top, float bottom, bool hit) =>
+    PAD + "ENTRY 1m · " + str.tostring(dir == 1 ? top : bottom, format.mintick) + (hit ? " · HIT" : "")
+
+f_setEntry(int z, int i) =>
+    int zDir = array.get(zoneDirs, z)
+    float t1 = array.get(tops1, i)
+    float b1 = array.get(bottoms1, i)
+    color ec = zDir == 1 ? color.blue : color.orange
+    box eb = box.new(left=array.get(times1, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
+         bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2,
+         text=f_entryText(zDir, t1, b1, false), text_color=zoneTextColor, text_size=zoneTextSize,
+         text_halign=text.align_right, text_valign=text.align_center)
+    array.set(zoneEntryBoxes, z, eb)
+    array.set(zoneEntryTops, z, t1)
+    array.set(zoneEntryBottoms, z, b1)
+    array.set(zoneEntryChecks, z, array.get(checks1, i))
 
 f_removeZone(int z) =>
     box.delete(array.get(zoneBoxes, z))
@@ -521,13 +617,36 @@ f_removeZone(int z) =>
     array.remove(zoneBottoms, z)
     array.remove(zoneCheckFroms, z)
     array.remove(zoneGrade, z)
+    box eb = array.get(zoneEntryBoxes, z)
+    if not na(eb)
+        box.delete(eb)
+    array.remove(zoneDirs, z)
+    array.remove(zoneLefts, z)
+    array.remove(zoneCreated, z)
+    array.remove(zoneEntryBoxes, z)
+    array.remove(zoneEntryTops, z)
+    array.remove(zoneEntryBottoms, z)
+    array.remove(zoneEntryChecks, z)
+    array.remove(zoneEntryHit, z)
 
 f_removeZoneByKey(string key) =>
     int idx = f_indexOf(zoneKeys, key)
     if idx >= 0
         f_removeZone(idx)
 
-// A zone disappears completely on its first touch.
+// First touch of a 1m entry: mark it HIT (and fire the alert).
+int newEntryHit = 0
+if array.size(zoneBoxes) > 0
+    for z = 0 to array.size(zoneBoxes) - 1
+        box eb = array.get(zoneEntryBoxes, z)
+        if not na(eb) and not array.get(zoneEntryHit, z)
+            if not na(f_firstTouch(curT, curH, curL, array.get(zoneEntryChecks, z), array.get(zoneEntryBottoms, z), array.get(zoneEntryTops, z)))
+                array.set(zoneEntryHit, z, true)
+                box.set_text(eb, f_entryText(array.get(zoneDirs, z), array.get(zoneEntryTops, z), array.get(zoneEntryBottoms, z), true))
+                box.set_border_style(eb, line.style_dashed)
+                newEntryHit += 1
+
+// A zone (and its entry) disappears completely on its first touch.
 if array.size(zoneBoxes) > 0
     for z = array.size(zoneBoxes) - 1 to 0
         if not na(f_firstTouch(curT, curH, curL, array.get(zoneCheckFroms, z), array.get(zoneBottoms, z), array.get(zoneTops, z)))
@@ -615,6 +734,7 @@ if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0 an
                                 array.push(zoneBottoms, low30)
                                 array.push(zoneCheckFroms, start30)
                                 array.push(zoneGrade, score)
+                                f_pushZoneMeta(dir30, src30)
                                 array.push(drawnIds, zoneId)
                                 newPrimary += 1
                                 if isSuper
@@ -672,7 +792,18 @@ if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 an
                 array.push(zoneBottoms, low15)
                 array.push(zoneCheckFroms, start15)
                 array.push(zoneGrade, g15)
+                f_pushZoneMeta(dir15, array.get(times15, j))
                 newFallback += 1
+
+// 1m entries: a new zone searches all stored 1m blocks; a zone still without an
+// entry only needs to look at the 1m blocks added on this bar.
+if showEntry and array.size(zoneBoxes) > 0
+    for z = 0 to array.size(zoneBoxes) - 1
+        if na(array.get(zoneEntryBoxes, z))
+            int fromIdx = array.get(zoneCreated, z) == time ? 0 : array.size(times1) - added1
+            int e = f_findEntry(z, fromIdx)
+            if not na(e)
+                f_setEntry(z, e)
 
 // Trim displayed zones; record arrays are independently capped per timeframe.
 while array.size(zoneBoxes) > maxZones
@@ -730,6 +861,7 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
 
 alertcondition(newPrimary > 0, "New 30m + 15m + 5m OB zone", "A new 30m Order Block zone with 15m and 5m confirmation was drawn on {{ticker}}.")
 alertcondition(newSuper > 0, "New SUPER STRONG OB zone", "A 30m Order Block zone is now confirmed by 15m, 10m and 5m blocks (SUPER STRONG) on {{ticker}}.")
+alertcondition(newEntryHit > 0, "1m entry reached", "Price reached the 1m entry block of an Order Block zone on {{ticker}}.")
 alertcondition(newFallback > 0, "New 15m + 10m + 5m OB zone", "A new 15m Order Block zone with 10m and 5m confirmation plus 15m volume was drawn on {{ticker}}.")
 
 // Notes:
