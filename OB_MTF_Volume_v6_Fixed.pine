@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.40", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.41", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -117,8 +117,22 @@ string infoTz = input.string("Asia/Jerusalem", "Time zone for the times shown", 
 string GROUP_EXPLAIN = "Debug: explain one candle"
 bool explainOn = input.bool(false, "Explain why a candle is / is not a block", group=GROUP_EXPLAIN,
      tooltip="Pick the candle you see as the block. A table shows, for each of the next candles, which rule passed or failed when it is tested as the impulse. Use a chart timeframe equal to or lower than the timeframe chosen here.")
-int explainTime = input.time(timestamp("2026-11-05T17:30:00+02:00"), "Block candle time", group=GROUP_EXPLAIN)
+// A text input (not a time input): a time input draws a draggable vertical line on
+// the chart, and moving it by accident recalculates the whole indicator.
+string explainTimeText = input.string("2026-11-05 17:30", "Block candle time (YYYY-MM-DD HH:MM, Debug time zone)", group=GROUP_EXPLAIN)
 string explainTf = input.string("15", "Timeframe of that candle", options=["30", "15", "10", "5", "1"], group=GROUP_EXPLAIN)
+
+// Parse "YYYY-MM-DD HH:MM" in the chosen time zone.
+f_parseTime(string txt) =>
+    array<string> parts = str.split(str.trim(txt), " ")
+    int result = na
+    if array.size(parts) == 2
+        array<string> d = str.split(array.get(parts, 0), "-")
+        array<string> hm = str.split(array.get(parts, 1), ":")
+        if array.size(d) == 3 and array.size(hm) == 2
+            result := timestamp(infoTz, int(str.tonumber(array.get(d, 0))), int(str.tonumber(array.get(d, 1))), int(str.tonumber(array.get(d, 2))), int(str.tonumber(array.get(hm, 0))), int(str.tonumber(array.get(hm, 1))))
+    result
+int explainTime = f_parseTime(explainTimeText)
 
 // -----------------------------------------------------------------------------
 // OB scanner, evaluated independently in each timeframe context.
