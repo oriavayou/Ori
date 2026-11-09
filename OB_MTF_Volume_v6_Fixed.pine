@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.44", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.45", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -1130,6 +1130,37 @@ while array.size(zoneBoxes) > maxZones
 while array.size(drawnIds) > maxZones * 8
     array.shift(drawnIds)
 
+// Debug: why the 15m block j is or is not a 15m+10m+5m zone.
+f_why15(int j) =>
+    int src = array.get(times15, j)
+    int dir15 = array.get(directions15, j)
+    float low15 = array.get(bottoms15, j)
+    float high15 = array.get(tops15, j)
+    int start15 = array.get(checks15, j)
+    int fromT = src - moveLookback * 900 * 1000
+    int end15 = na(knownUntil) ? start15 : math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+    int p10 = f_partner(times10, directions10, bottoms10, tops10, dir15, low15, high15, fromT, start15)
+    int w10 = f_partnerW(times10, directions10, bottoms10, tops10, checks10, hits10, impulses10, 600, dir15, low15, high15, fromT, start15, start15, end15)
+    int p5 = f_partner(times5, directions5, bottoms5, tops5, dir15, low15, high15, fromT, start15)
+    int w5 = f_partnerW(times5, directions5, bottoms5, tops5, checks5, hits5, impulses5, 300, dir15, low15, high15, fromT, start15, start15, end15)
+    string gapTxt = " (max gap " + str.tostring(allowedGap, "#.##") + ")"
+    float rj = array.get(volumes15, j)
+    int gj = f_grade(rj)
+    string v = f_volText(gj, rj)
+    string key = "F|" + str.tostring(src)
+    string facts = " [confirmed " + f_hm(start15) + ", touched " + f_hm(array.get(hits15, j)) + ", middle reached " + f_hm(array.get(mid15, j)) + "]"
+    string why = not f_buildable(impulses15, mid15, 900, j) ? "too old or price crossed its middle" :
+         gj == 0 ? v + " -> no zone (low volume)" :
+         array.get(has30Now, j) ? v + " -> part of a 30m zone" :
+         f_indexOf(zoneKeys, key) >= 0 ? v + " -> zone" :
+         f_hasId(drawnIds, key) ? v + " -> zone was drawn and removed (enable 'Show removed zones')" :
+         na(p10) ? v + " -> no 10m block from the same move close enough" + gapTxt :
+         na(w10) ? v + " -> 10m block (" + f_hm(array.get(times10, p10)) + ") touched before this 15m block was confirmed" :
+         na(p5) ? v + " -> no 5m block from the same move close enough" + gapTxt :
+         na(w5) ? v + " -> 5m block (" + f_hm(array.get(times5, p5)) + ") touched before this 15m block was confirmed" :
+         v + " -> 10m and 5m blocks never untouched at the same time"
+    why + facts
+
 // Debug: on the last bar, say why each untouched 15m block is or is not a zone.
 if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
     for r = 0 to array.size(rawBoxes) - 1
@@ -1137,30 +1168,7 @@ if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
             int src = array.get(rawSrcs, r)
             int j = array.indexof(times15, src)
             if j >= 0
-                int dir15 = array.get(directions15, j)
-                float low15 = array.get(bottoms15, j)
-                float high15 = array.get(tops15, j)
-                int start15 = array.get(checks15, j)
-                int fromT = src - moveLookback * 900 * 1000
-                int end15 = na(knownUntil) ? start15 : math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
-                int p10 = f_partner(times10, directions10, bottoms10, tops10, dir15, low15, high15, fromT, start15)
-                int w10 = f_partnerW(times10, directions10, bottoms10, tops10, checks10, hits10, impulses10, 600, dir15, low15, high15, fromT, start15, start15, end15)
-                int p5 = f_partner(times5, directions5, bottoms5, tops5, dir15, low15, high15, fromT, start15)
-                int w5 = f_partnerW(times5, directions5, bottoms5, tops5, checks5, hits5, impulses5, 300, dir15, low15, high15, fromT, start15, start15, end15)
-                string gapTxt = " (max gap " + str.tostring(allowedGap, "#.##") + ")"
-                float rj = array.get(volumes15, j)
-                int gj = f_grade(rj)
-                string v = f_volText(gj, rj)
-                string why = not f_buildable(impulses15, mid15, 900, j) ? "too old or price crossed its middle" :
-                     gj == 0 ? v + " -> no zone" :
-                     array.get(has30Now, j) ? v + " -> part of a 30m zone" :
-                     f_indexOf(zoneKeys, "F|" + str.tostring(src)) >= 0 ? v + " -> zone" :
-                     na(p10) ? v + " -> no 10m block from the same move close enough" + gapTxt :
-                     na(w10) ? v + " -> 10m block (" + f_hm(array.get(times10, p10)) + ") touched before this 15m block was confirmed" :
-                     na(p5) ? v + " -> no 5m block from the same move close enough" + gapTxt :
-                     na(w5) ? v + " -> 5m block (" + f_hm(array.get(times5, p5)) + ") touched before this 15m block was confirmed" :
-                     v + " -> 10m and 5m blocks never untouched at the same time"
-                box.set_text(array.get(rawBoxes, r), PAD + "15m " + f_hm(src) + " · " + why)
+                box.set_text(array.get(rawBoxes, r), PAD + "15m " + f_hm(src) + " · " + f_why15(j))
 
 alertcondition(newPrimary > 0, "New 30m + 15m + 5m OB zone", "A new 30m Order Block zone with 15m and 5m confirmation was drawn on {{ticker}}.")
 alertcondition(newSuper > 0, "New SUPER STRONG OB zone", "A 30m Order Block zone is now confirmed by 15m, 10m and 5m blocks (SUPER STRONG) on {{ticker}}.")
@@ -1225,7 +1233,7 @@ if barstate.islast
     if explainOn and not na(explainTime)
         exLine1 := line.new(explainTime, low, explainTime, high, xloc=xloc.bar_time, extend=extend.both,
              color=color.new(color.orange, 20), style=line.style_dashed, width=1)
-var table exTable = table.new(position.bottom_left, 8, 2, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1, border_color=color.silver, border_width=1)
+var table exTable = table.new(position.bottom_left, 8, 3, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1, border_color=color.silver, border_width=1)
 if barstate.islast and explainOn
     table.cell(exTable, 0, 0, explainTf + "m block candle " + f_hm(explainTime) + ": each next candle tested as the impulse / break candle (needed value in brackets)",
          text_color=color.black, text_size=size.small, text_halign=text.align_left)
@@ -1236,6 +1244,16 @@ if barstate.islast and explainOn
     else
         for n = 0 to math.min(array.size(exLines), 8) - 1
             table.cell(exTable, n, 1, array.get(exLines, n), text_color=color.black, text_size=size.small, text_halign=text.align_left, text_valign=text.align_top)
+    // For a 15m candle, also say what happened to it as a zone.
+    if explainTf == "15" and not na(explainTime) and array.size(times15) > 0
+        int jx = na
+        for i = 0 to array.size(times15) - 1
+            int t = array.get(times15, i)
+            if t <= explainTime and explainTime < t + 900 * 1000
+                jx := i
+        string verdict = na(jx) ? "Zone: this candle is not a stored 15m block (not detected, or older than the stored records)." : "Zone: " + f_why15(jx)
+        table.cell(exTable, 0, 2, verdict, text_color=color.black, text_size=size.small, text_halign=text.align_left)
+        table.merge_cells(exTable, 0, 2, 7, 2)
 
 alertcondition(newEntryHit > 0, "1m entry reached", "Price reached the 1m entry block of an Order Block zone on {{ticker}}.")
 alertcondition(newFallback > 0, "New 15m + 10m + 5m OB zone", "A new 15m Order Block zone with 10m and 5m confirmation plus 15m volume was drawn on {{ticker}}.")
