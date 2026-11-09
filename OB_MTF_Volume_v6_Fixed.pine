@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTF Order Blocks v6.42", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
+indicator("MTF Order Blocks v6.43", shorttitle="MTF OB", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000)
 
 // v6.3 - same zones on every chart timeframe
 // Each OB record has a validity window [confirmation close, first touch) that
@@ -113,6 +113,7 @@ bool showRaw10 = input.bool(false, "Show every raw 10m OB (dotted)", group=GROUP
 bool showRaw5 = input.bool(false, "Show every raw 5m OB (dotted)", group=GROUP_DEBUG)
 bool showZoneInfo = input.bool(false, "Show which blocks built each zone (source candle times)", group=GROUP_DEBUG)
 string infoTz = input.string("Asia/Jerusalem", "Time zone for the times shown", group=GROUP_DEBUG)
+bool showRemoved = input.bool(false, "Show removed zones as grey ghosts with the reason", group=GROUP_DEBUG)
 
 string GROUP_EXPLAIN = "Debug: explain one candle"
 bool explainOn = input.bool(false, "Explain why a candle is / is not a block", group=GROUP_EXPLAIN,
@@ -808,7 +809,21 @@ f_setEntry(array<int> eTimes, array<int> eChecks, array<float> eBots, array<floa
     array.set(zoneEntryTfs, z, tfMin)
     f_refreshLabel(z)
 
-f_removeZone(int z) =>
+var array<box> ghostBoxes = array.new<box>()
+
+// Remove zone z. With "Show removed zones" on, a grey ghost box stays behind with
+// the zone's label and the reason it was removed.
+f_removeZone(int z, string why) =>
+    if showRemoved and why != ""
+        label lb0 = array.get(zoneLabels, z)
+        string lbl = na(lb0) ? array.get(zoneTexts, z) : label.get_text(lb0)
+        box g = box.new(left=array.get(zoneLefts, z), top=array.get(zoneTops, z), right=time, bottom=array.get(zoneBottoms, z), xloc=xloc.bar_time,
+             bgcolor=color.new(color.gray, 90), border_color=color.new(color.gray, 40), border_width=1, border_style=line.style_dotted,
+             text=PAD + lbl + "\nremoved " + str.format_time(time, "dd/MM HH:mm", infoTz) + ": " + why,
+             text_color=zoneTextColor, text_size=size.small, text_halign=text.align_left, text_valign=text.align_top)
+        array.push(ghostBoxes, g)
+        while array.size(ghostBoxes) > 40
+            box.delete(array.shift(ghostBoxes))
     box.delete(array.get(zoneBoxes, z))
     array.remove(zoneBoxes, z)
     array.remove(zoneKeys, z)
@@ -841,12 +856,12 @@ f_useUpZone(int z) =>
     string usedKey = array.get(zoneKeys, z)
     if not f_hasId(drawnIds, usedKey)
         array.push(drawnIds, usedKey)
-    f_removeZone(z)
+    f_removeZone(z, "its entry block was already reached when the zone was built")
 
 f_removeZoneByKey(string key) =>
     int idx = f_indexOf(zoneKeys, key)
     if idx >= 0
-        f_removeZone(idx)
+        f_removeZone(idx, "replaced by a 30m zone over the same 15m block")
 
 // First touch of a 1m entry: fire the alert and remove everything (zone + entry).
 // A touch of the zone itself does the same just below.
@@ -861,7 +876,7 @@ if array.size(zoneBoxes) > 0
                 string usedKey = array.get(zoneKeys, z)
                 if not f_hasId(drawnIds, usedKey)
                     array.push(drawnIds, usedKey)
-                f_removeZone(z)
+                f_removeZone(z, "entry block reached")
 
 // A zone WITH an entry stays until its entry block is touched (handled above), or
 // until price crosses at least half of the zone (reaches its middle).
@@ -873,13 +888,13 @@ if array.size(zoneBoxes) > 0
         int zFrom = array.get(zoneCheckFroms, z)
         if na(array.get(zoneEntryBoxes, z))
             if not na(f_firstTouch(curT, curH, curL, zFrom, zBot, zTop))
-                f_removeZone(z)
+                f_removeZone(z, "touched (no entry)")
         else
             // Buy zone: a low at or below the middle. Sell zone: a high at or above it.
             float mid = (zTop + zBot) / 2
             bool buyZone = array.get(zoneDirs, z) == 1
             if not na(f_firstTouch(curT, curH, curL, zFrom, buyZone ? zBot - 1e9 : mid, buyZone ? mid : zTop + 1e9))
-                f_removeZone(z)
+                f_removeZone(z, "price crossed half of the zone")
 
 int newPrimary = 0
 int newFallback = 0
@@ -1076,7 +1091,7 @@ while array.size(zoneBoxes) > maxZones
     string trimmedKey = array.get(zoneKeys, 0)
     if not f_hasId(drawnIds, trimmedKey)
         array.push(drawnIds, trimmedKey)
-    f_removeZone(0)
+    f_removeZone(0, "")
 while array.size(drawnIds) > maxZones * 8
     array.shift(drawnIds)
 
