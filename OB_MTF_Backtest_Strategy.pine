@@ -1,0 +1,1325 @@
+//@version=6
+strategy("MTF Order Blocks Backtest", shorttitle="MTF OB BT", overlay=true, max_boxes_count=500, max_labels_count=100, max_bars_back=1000,
+     initial_capital=10000, default_qty_type=strategy.fixed, default_qty_value=1, pyramiding=0, commission_type=strategy.commission.cash_per_contract, commission_value=0)
+
+// BACKTEST of the "MTF Order Blocks" indicator (same zone / entry logic).
+// For every zone with an entry block (1m, or 5m fallback "E5"):
+//   BUY zone : limit BUY at (top of the entry block + offset); stop and target in pips.
+//   SELL zone: limit SELL at (bottom of the entry block - offset).
+// The pending order is cancelled when the zone is removed before it fills.
+// One position at a time. Only zones created inside the test period are traded.
+
+// v6.3 - same zones on every chart timeframe
+// Each OB record has a validity window [confirmation close, first touch) that
+// is measured on the SAME 5m candles whatever the chart timeframe is. A
+// confluence zone exists when the windows of its blocks overlap, so the result
+// no longer depends on how often the chart happens to evaluate it (v6.2 took a
+// snapshot on every chart candle, so a 15m chart could miss a zone that a 10m
+// chart caught between two touches).
+// - A late-arriving record is back-checked against a buffer of recent 5m candles.
+// - A zone is never drawn before its blocks are actually confirmed.
+// - v6.7: a 15m+10m+5m zone is hidden only WHILE an untouched 30m block pairs
+//   with its 15m block (v6.4 hid it forever, so a 15m block whose 30m partner
+//   was touched got no zone at all).
+// - v6.7: debug boxes show only untouched blocks, with their volume status.
+// - v6.17: no text inside the boxes. One short label per zone in the empty space
+//   right of the last candle, spread apart so labels never overlap:
+//     "★ 30·15·10·5  VOL+ x2.3   E 4093.59"   ★ = SUPER STRONG
+//     "30·15·5  VOL x1.7   E ..."   "15·10·5  LOW x1.2"
+//   VOL+ = very strong volume, VOL = good, LOW = low.
+//   v6.25: volume is measured around the BLOCK candle (it and up to 3 candles
+//   before / after it), not around the impulse. E = 1m entry price (✓ = reached).
+// - v6.16: every zone gets a 1m ENTRY block: the closest untouched same-direction
+//   1m OB formed since the zone's source candle, within "Max distance" of the zone
+//   (it does not have to overlap the zone). One colour for buy and sell entries
+//   (purple by default); the border turns dashed once price reaches the entry.
+//   The line price is the entry (top of a buy block / bottom of a sell block).
+// - v6.15: a 30m zone needs a 15m AND a 5m block (30m+15m+5m). If a 10m block is
+//   valid at the same moment as well, it is SUPER STRONG (darkest box, border 4).
+// - v6.12: three volume grades. Ratio = highest volume of the impulse candle and
+//   the candles before it / average volume before the impulse:
+//     VOL STRONG  >= "Very strong volume threshold" (default x2.0) - darkest box, thick border
+//     VOL OK      >= "Good volume threshold" (default x1.5)
+//     LOW VOL     below that (30m+15m zones only, drawn faint)
+//   The ratio is printed on every zone, e.g. "VOL STRONG x3.1".
+// - v6.4: the volume filter checks the impulse candle and the candles before it;
+//   the candle after the impulse no longer counts (v6.0-v6.3 counted it).
+//
+// Untouched rule (v6.2): before confirmation, once a candle closes outside the
+// block, any later wick inside it kills the block. After confirmation, the first
+// 5m candle that touches the block ends it; touched blocks are never drawn and a
+// drawn zone is deleted on its first touch.
+
+// -----------------------------------------------------------------------------
+// Inputs
+// -----------------------------------------------------------------------------
+string GROUP_BT = "Backtest"
+float pipSize = input.float(0.1, "Pip size (XAUUSD: 0.1 = 10 cents)", minval=0.0001, step=0.01, group=GROUP_BT)
+float entryOffsetPips = input.float(10, "Enter this many pips before the entry block", minval=0, group=GROUP_BT)
+float slPips = input.float(50, "Stop loss (pips)", minval=1, group=GROUP_BT)
+float tpPips = input.float(100, "Take profit (pips)", minval=1, group=GROUP_BT)
+string btFromText = input.string("2026-10-01", "Test from (YYYY-MM-DD)", group=GROUP_BT)
+string btToText = input.string("2026-11-01", "Test to (YYYY-MM-DD, not included)", group=GROUP_BT)
+bool btLong = input.bool(true, "Trade buy zones", group=GROUP_BT)
+bool btShort = input.bool(true, "Trade sell zones", group=GROUP_BT)
+
+string GROUP_OB = "Order Block Detection"
+int atrLen = input.int(14, "ATR length", minval=2, group=GROUP_OB)
+string impulseMode = input.string("Move (several candles)", "Impulse", options=["Move (several candles)", "Single candle"], group=GROUP_OB,
+     tooltip="Move = the break of the block candle may take several candles: a candle closes beyond the block candle, the whole move since the block is >= 'Impulse body / ATR' and there is an FVG somewhere in the move (the FVG may form a few candles after the first break). Single candle = one big candle must do it all.")
+string bosMode = input.string("Block candle", "Impulse must break", options=["Block candle", "Last N candles"], group=GROUP_OB,
+     tooltip="Block candle = the impulse closes above the high of the block candle (below its low for a sell block). Last N candles = the impulse closes above the highest high of the N candles before it (stricter: an old spike can block it).")
+int structureLen = input.int(5, "Break of structure lookback (Last N candles)", minval=2, maxval=30, group=GROUP_OB)
+int searchLen = input.int(8, "Search last opposite candle", minval=1, maxval=30, group=GROUP_OB)
+float impulseATR = input.float(0.80, "Impulse body / ATR", minval=0.1, step=0.05, group=GROUP_OB)
+float minBodyPct = input.float(0.55, "Minimum body / candle range", minval=0.1, maxval=1.0, step=0.05, group=GROUP_OB)
+bool requireFVG = input.bool(true, "Require FVG after impulse candle", group=GROUP_OB)
+int maxAgeBars = input.int(100, "Maximum OB age (bars of its own timeframe)", minval=5, maxval=1000, group=GROUP_OB)
+
+string GROUP_VOL = "Volume Filter (chart symbol)"
+int volLen = input.int(20, "Volume average length", minval=2, group=GROUP_VOL)
+float volMultiplier = input.float(1.50, "Good volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
+float volStrongMultiplier = input.float(2.0, "Very strong volume threshold (x average)", minval=1.0, step=0.05, group=GROUP_VOL)
+int volumeWindow = input.int(3, "Volume window: candles before / after the block candle", minval=0, maxval=8, group=GROUP_VOL,
+     tooltip="The block's volume = the highest volume of the block candle and up to this many candles before and after it (only candles that already closed), compared with the average volume before that window.")
+
+string GROUP_MTF = "Multi-timeframe Confirmation"
+float nearATR = input.float(2.3, "Allowed distance between OBs (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_MTF)
+int moveLookback = input.int(2, "Same move: smaller blocks may start this many big candles before the block candle", minval=0, maxval=20, group=GROUP_MTF,
+     tooltip="A 5m / 10m / 15m block counts for a bigger block when its source candle is between this many big candles before the big block candle and the moment the big block is confirmed. Example: 2 on a 15m block = up to 30 minutes before it.")
+
+string GROUP_ENTRY = "1m Entry"
+bool showEntry = input.bool(true, "Mark a 1m entry block for every zone", group=GROUP_ENTRY)
+float entryATR = input.float(0.5, "Max distance of the 1m block from the zone (30m ATR multiple)", minval=0.0, step=0.05, group=GROUP_ENTRY,
+     tooltip="0 = the 1m block must touch or overlap the zone. Larger values also accept 1m blocks just above / below the zone.")
+string entryPick = input.string("Extreme", "Which 1m block to use", options=["Extreme", "Closest"], group=GROUP_ENTRY,
+     tooltip="Extreme = the highest 1m block for a sell zone / the lowest for a buy zone (the origin of the move). Closest = the 1m block nearest to the zone.")
+color entryColor = input.color(color.purple, "Entry box colour (long and short)", group=GROUP_ENTRY)
+int entryOpacity = input.int(82, "Entry box transparency", minval=0, maxval=100, group=GROUP_ENTRY)
+
+string GROUP_SESSIONS = "Valid OB Creation Sessions"
+bool restrictToSessions = input.bool(true, "Only accept OB source candles during these sessions", group=GROUP_SESSIONS,
+     tooltip="Only the opposite-colour OB source candle must fall inside an enabled session. The confirming impulse candle may occur outside session hours.")
+bool useTokyo = input.bool(true, "Tokyo", inline="TOK", group=GROUP_SESSIONS)
+string tokyoSession = input.session("0900-1500", "Hours", inline="TOK", group=GROUP_SESSIONS)
+bool useLondon = input.bool(true, "London", inline="LON", group=GROUP_SESSIONS)
+string londonSession = input.session("0830-1630", "Hours", inline="LON", group=GROUP_SESSIONS)
+bool useNewYork = input.bool(true, "New York", inline="NY", group=GROUP_SESSIONS)
+string newYorkSession = input.session("0930-1600", "Hours", inline="NY", group=GROUP_SESSIONS)
+
+string GROUP_DRAW = "Display"
+int maxZones = input.int(40, "Maximum zones to keep", minval=1, maxval=150, group=GROUP_DRAW)
+int maxRecordsPerTF = input.int(80, "Maximum OB records per timeframe", minval=10, maxval=250, group=GROUP_DRAW)
+int superOpacity = input.int(40, "SUPER STRONG zone transparency (30m+15m+10m+5m)", minval=0, maxval=100, group=GROUP_DRAW)
+int veryStrongOpacity = input.int(55, "Very strong volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
+int strongOpacity = input.int(70, "Good volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
+int weakOpacity = input.int(86, "Weak-volume box transparency", minval=0, maxval=100, group=GROUP_DRAW)
+string labelMode = input.string("Short", "Zone labels (at the right of the chart)", options=["Short", "Off"], group=GROUP_DRAW)
+string labelSizeInput = input.string("Small", "Zone text size", options=["Tiny", "Small", "Normal", "Large"], group=GROUP_DRAW)
+bool autoTextColor = input.bool(true, "Zone text: automatic colour (black on light chart, white on dark)", group=GROUP_DRAW)
+color customTextColor = input.color(color.black, "Zone text colour (when automatic is off)", group=GROUP_DRAW)
+
+string zoneTextSize = labelSizeInput == "Tiny" ? size.tiny : labelSizeInput == "Small" ? size.small : labelSizeInput == "Large" ? size.large : size.normal
+color zoneTextColor = autoTextColor ? chart.fg_color : customTextColor
+// Leading spaces keep the first letters clear of the source candle at the box's left edge.
+string PAD = "   "
+
+string GROUP_DEBUG = "Debug"
+bool showRaw30 = input.bool(false, "Show every raw 30m OB (dashed)", group=GROUP_DEBUG)
+bool showRaw15 = input.bool(false, "Show every raw 15m OB (dotted) + why it is not a zone", group=GROUP_DEBUG)
+bool showRaw10 = input.bool(false, "Show every raw 10m OB (dotted)", group=GROUP_DEBUG)
+bool showRaw5 = input.bool(false, "Show every raw 5m OB (dotted)", group=GROUP_DEBUG)
+bool showZoneInfo = input.bool(false, "Show which blocks built each zone (source candle times)", group=GROUP_DEBUG)
+string infoTz = input.string("Asia/Jerusalem", "Time zone for the times shown", group=GROUP_DEBUG)
+bool showRemoved = input.bool(false, "Show removed zones as grey ghosts with the reason", group=GROUP_DEBUG)
+
+string GROUP_EXPLAIN = "Debug: explain one candle"
+bool explainOn = input.bool(false, "Explain why a candle is / is not a block", group=GROUP_EXPLAIN,
+     tooltip="Pick the candle you see as the block. A table shows, for each of the next candles, which rule passed or failed when it is tested as the impulse. Use a chart timeframe equal to or lower than the timeframe chosen here.")
+// A text input (not a time input): a time input draws a draggable vertical line on
+// the chart, and moving it by accident recalculates the whole indicator.
+string explainTimeText = input.string("2026-11-05 17:30", "Block candle time (YYYY-MM-DD HH:MM, Debug time zone)", group=GROUP_EXPLAIN)
+string explainTf = input.string("15", "Timeframe of that candle", options=["30", "15", "10", "5", "1"], group=GROUP_EXPLAIN)
+
+// Parse "YYYY-MM-DD HH:MM" in the chosen time zone.
+f_parseTime(string txt) =>
+    array<string> parts = str.split(str.trim(txt), " ")
+    int result = na
+    if array.size(parts) == 2
+        array<string> d = str.split(array.get(parts, 0), "-")
+        array<string> hm = str.split(array.get(parts, 1), ":")
+        if array.size(d) == 3 and array.size(hm) == 2
+            result := timestamp(infoTz, int(str.tonumber(array.get(d, 0))), int(str.tonumber(array.get(d, 1))), int(str.tonumber(array.get(d, 2))), int(str.tonumber(array.get(hm, 0))), int(str.tonumber(array.get(hm, 1))))
+    result
+int explainTime = f_parseTime(explainTimeText)
+
+// -----------------------------------------------------------------------------
+// OB scanner, evaluated independently in each timeframe context.
+// Impulse = last CLOSED bar [1]; the current bar [0] confirms the FVG
+// (bull: low[0] > high[2], bear: high[0] < low[2]). The event is emitted on
+// bar [0]. The OB source candle must be in-session, and the block must not have
+// been re-entered after price left it (see header).
+// Returns [sourceTime, impulseTime, checkFrom, bottom, top, direction, volumeOK]
+// where checkFrom = close time of bar [0]; touches are tracked from there on.
+// -----------------------------------------------------------------------------
+f_scanOB() =>
+    bool inTokyo = useTokyo and not na(time(timeframe.period, tokyoSession, "Asia/Tokyo"))
+    bool inLondon = useLondon and not na(time(timeframe.period, londonSession, "Europe/London"))
+    bool inNewYork = useNewYork and not na(time(timeframe.period, newYorkSession, "America/New_York"))
+    bool inAllowedSession = inTokyo or inLondon or inNewYork
+
+    // Every ta.* call is unconditional (v6 lazy `and` would otherwise skip bars).
+    float atrNow = ta.atr(atrLen)
+    float avgVol = ta.sma(volume, volLen)
+    float structHigh = ta.highest(high, structureLen)
+    float structLow = ta.lowest(low, structureLen)
+
+    float body = math.abs(close - open)
+    float candleRange = math.max(high - low, syminfo.mintick)
+    float bodyRatio = body / candleRange
+
+    bool bigBody = not na(atrNow[1]) and body[1] >= atrNow[1] * impulseATR and bodyRatio[1] >= minBodyPct
+    bool bosOnBlock = bosMode == "Block candle"
+    bool bullImpulse = close[1] > open[1] and bigBody and (bosOnBlock or (not na(structHigh[2]) and close[1] > structHigh[2]))
+    bool bearImpulse = close[1] < open[1] and bigBody and (bosOnBlock or (not na(structLow[2]) and close[1] < structLow[2]))
+    if requireFVG
+        bullImpulse := bullImpulse and low > high[2]
+        bearImpulse := bearImpulse and high < low[2]
+
+    // (volume is measured around the block candle, see below)
+
+    int src = na
+    int dir = 0
+    if bullImpulse
+        dir := 1
+        for i = 2 to searchLen + 1
+            if na(src) and close[i] < open[i] and (not restrictToSessions or inAllowedSession[i])
+                src := i
+    else if bearImpulse
+        dir := -1
+        for i = 2 to searchLen + 1
+            if na(src) and close[i] > open[i] and (not restrictToSessions or inAllowedSession[i])
+                src := i
+
+    // "Block candle" break rule: the impulse must close beyond the block candle itself.
+    if not na(src) and bosOnBlock
+        bool brokeBlock = dir == 1 ? close[1] > high[src] : close[1] < low[src]
+        if not brokeBlock
+            src := na
+
+    // "Move" mode: bar [1] closes beyond the block candle (the last opposite candle
+    // within searchLen), the whole move from the block close to bar [1] is
+    // >= impulseATR x ATR, and an FVG exists inside the move. The conditions may be
+    // completed a few candles after the first break (e.g. the FVG forms later); the
+    // block is stored once, the first time everything is true.
+    if impulseMode == "Move (several candles)"
+        src := na
+        dir := 0
+        for side = 0 to 1
+            int want = side == 0 ? 1 : -1
+            int sB = na
+            for i = 2 to searchLen + 1
+                bool opp = want == 1 ? close[i] < open[i] : close[i] > open[i]
+                if na(sB) and opp and (not restrictToSessions or inAllowedSession[i])
+                    sB := i
+            if dir == 0 and not na(sB)
+                float lvlB = want == 1 ? high[sB] : low[sB]
+                bool beyond = want == 1 ? close[1] > lvlB : close[1] < lvlB
+                float leg = want == 1 ? close[1] - close[sB] : close[sB] - close[1]
+                bool bigLeg = not na(atrNow[1]) and leg >= atrNow[1] * impulseATR
+                bool fvgLeg = not requireFVG
+                for k = sB - 1 to 1
+                    if want == 1 ? low[k - 1] > high[k + 1] : high[k - 1] < low[k + 1]
+                        fvgLeg := true
+                if beyond and bigLeg and fvgLeg
+                    src := sB
+                    dir := want
+
+    int srcTime = na
+    int impulseTime = na
+    int checkFrom = na
+    float srcBottom = na
+    float srcTop = na
+    int outDir = 0
+    float outVol = na
+    if not na(src)
+        float b = math.min(open[src], close[src])
+        float t = math.max(open[src], close[src])
+        // Walk from the candle after the source up to bar [0]: once a candle has
+        // CLOSED outside the block body in the direction of the move (above it for a
+        // buy block, below it for a sell block), any later wick back inside kills it.
+        bool leftBlock = false
+        bool retouched = false
+        for j = src - 1 to 0
+            if leftBlock and high[j] >= b and low[j] <= t
+                retouched := true
+            if dir == 1 ? close[j] > t : close[j] < b
+                leftBlock := true
+        // Volume: highest volume of the block candle and up to `volumeWindow` candles
+        // before and after it (after = only candles that already closed, so at
+        // most up to bar [0]), against the average of the candles before that window.
+        float peak = 0.0
+        for j = src + volumeWindow to math.max(src - volumeWindow, 0)
+            peak := math.max(peak, nz(volume[j]))
+        float base = avgVol[src + volumeWindow + 1]
+        float volRatio = not na(base) and base > 0 ? peak / base : na
+        if not retouched
+            srcTime := time[src]
+            impulseTime := time[1]
+            checkFrom := time_close
+            srcBottom := b
+            srcTop := t
+            outDir := dir
+            outVol := volRatio
+    [srcTime, impulseTime, checkFrom, srcBottom, srcTop, outDir, outVol]
+
+// Previous confirmed bar of the scanner, for request.security() with lookahead_on
+// (the standard non-repainting higher-timeframe pattern).
+f_scanConfirmed() =>
+    [sT, sI, sC, sB, sP, sD, sV] = f_scanOB()
+    [sT[1], sI[1], sC[1], sB[1], sP[1], sD[1], sV[1]]
+
+
+// -----------------------------------------------------------------------------
+// Storage helpers
+// Each record keeps: source time, impulse time, checkFrom (confirmation close,
+// when the block becomes known), touchedAt (open time of the first 5m candle
+// that touched it, na = untouched), bottom, top, direction, volume flag.
+// -----------------------------------------------------------------------------
+
+// Open time of the first candle (opened at/after fromTime) that overlaps the block, or na.
+f_firstTouch(array<int> cT, array<float> cH, array<float> cL, int fromTime, float bottom, float top) =>
+    int hitAt = na
+    if array.size(cT) > 0
+        for c = 0 to array.size(cT) - 1
+            int ct = array.get(cT, c)
+            if na(hitAt) and not na(ct) and ct >= fromTime and array.get(cH, c) >= bottom and array.get(cL, c) <= top
+                hitAt := ct
+    hitAt
+
+// midHits: open time of the first 5m candle that reached the middle of the block
+// (a low at/below the middle for a buy block, a high at/above it for a sell block).
+f_midTouch(array<int> cT, array<float> cH, array<float> cL, int fromTime, float bottom, float top, int direction) =>
+    float mid = (bottom + top) / 2
+    direction == 1 ? f_firstTouch(cT, cH, cL, fromTime, bottom - 1e9, mid) : f_firstTouch(cT, cH, cL, fromTime, mid, top + 1e9)
+
+f_addRecord(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<int> touchedAts, array<int> midHits, array<float> bottoms, array<float> tops,
+            array<int> directions, array<float> volumePasses,
+            int srcTime, int impulseTime, int checkFrom, float bottom, float top, int direction, float volumePass, int maxRecords,
+            array<int> bufT, array<float> bufH, array<float> bufL) =>
+    bool added = false
+    if not na(srcTime) and not na(impulseTime) and not na(checkFrom) and not na(bottom) and not na(top) and direction != 0
+        bool exists = false
+        if array.size(times) > 0
+            for k = 0 to array.size(times) - 1
+                if array.get(times, k) == srcTime
+                    exists := true
+        if not exists
+            array.push(times, srcTime)
+            array.push(impulseTimes, impulseTime)
+            array.push(checkFroms, checkFrom)
+            // Back-check the recent 5m candles in case the record arrived late.
+            array.push(touchedAts, f_firstTouch(bufT, bufH, bufL, checkFrom, bottom, top))
+            array.push(midHits, f_midTouch(bufT, bufH, bufL, checkFrom, bottom, top, direction))
+            array.push(bottoms, bottom)
+            array.push(tops, top)
+            array.push(directions, direction)
+            array.push(volumePasses, volumePass)
+            added := true
+            while array.size(times) > maxRecords
+                array.shift(times)
+                array.shift(impulseTimes)
+                array.shift(checkFroms)
+                array.shift(touchedAts)
+                array.shift(midHits)
+                array.shift(bottoms)
+                array.shift(tops)
+                array.shift(directions)
+                array.shift(volumePasses)
+    added
+
+// Volume grade from the ratio (impulse peak / average): 2 = very strong, 1 = good, 0 = low.
+f_grade(float ratio) =>
+    na(ratio) ? 0 : ratio >= volStrongMultiplier ? 2 : ratio >= volMultiplier ? 1 : 0
+
+// Short volume tag for the zone labels: VOL+ (very strong), VOL (good), LOW.
+f_volShort(int grade, float ratio) =>
+    (grade == 2 ? "VOL+ " : grade == 1 ? "VOL " : "LOW ") + (na(ratio) ? "" : "x" + str.tostring(ratio, "#.#"))
+
+f_volText(int grade, float ratio) =>
+    (grade == 2 ? "VOL STRONG" : grade == 1 ? "VOL OK" : "LOW VOL") + (na(ratio) ? "" : " x" + str.tostring(ratio, "#.#"))
+
+f_fillT(int grade) =>
+    grade == 2 ? veryStrongOpacity : grade == 1 ? strongOpacity : weakOpacity
+
+f_borderT(int grade) =>
+    grade == 2 ? 0 : grade == 1 ? 10 : 50
+
+f_borderW(int grade) =>
+    grade == 2 ? 3 : grade == 1 ? 2 : 1
+
+// Debug box for one untouched single-timeframe block; deleted on its first touch.
+f_rawBox(array<box> store, array<float> rTops, array<float> rBottoms, array<int> rChecks, array<string> rTfs, array<int> rSrcs,
+         int srcTime, int checkFrom, float bottom, float top, int direction, float volRatio, string tfText, string lineStyle) =>
+    color base = direction == 1 ? color.teal : color.red
+    // 30m/15m text on the left, 10m in the middle, 5m on the right, so stacked
+    // debug boxes at the same price do not print over each other.
+    box bx = box.new(left=srcTime, top=top, right=time, bottom=bottom, xloc=xloc.bar_time, extend=extend.right,
+         bgcolor=color.new(base, 100), border_color=color.new(base, 20), border_width=1, border_style=lineStyle,
+         text=PAD + tfText + " · " + f_volText(f_grade(volRatio), volRatio), text_color=zoneTextColor, text_size=size.small,
+         text_halign=tfText == "10m" ? text.align_center : tfText == "5m" ? text.align_right : text.align_left, text_valign=text.align_bottom)
+    array.push(store, bx)
+    array.push(rTops, top)
+    array.push(rBottoms, bottom)
+    array.push(rChecks, checkFrom)
+    array.push(rTfs, tfText)
+    array.push(rSrcs, srcTime)
+    while array.size(store) > 150
+        box.delete(array.shift(store))
+        array.shift(rTops)
+        array.shift(rBottoms)
+        array.shift(rChecks)
+        array.shift(rTfs)
+        array.shift(rSrcs)
+
+// Push every OB event found in one timeframe's array into its record store.
+f_ingest(array<int> times, array<int> impulseTimes, array<int> checkFroms, array<int> touchedAts, array<int> midHits, array<float> bottoms, array<float> tops,
+         array<int> directions, array<float> volumePasses,
+         array<int> tArr, array<int> iArr, array<int> cArr, array<float> bArr, array<float> pArr, array<int> dArr, array<float> vArr,
+         int maxRecords, array<int> bufT, array<float> bufH, array<float> bufL,
+         bool drawRaw, array<box> rawStore, array<float> rTops, array<float> rBottoms, array<int> rChecks, array<string> rTfs, array<int> rSrcs, string tfText, string lineStyle) =>
+    int addedCount = 0
+    if array.size(tArr) > 0
+        for i = 0 to array.size(tArr) - 1
+            int srcT = array.get(tArr, i)
+            if not na(srcT)
+                bool added = f_addRecord(times, impulseTimes, checkFroms, touchedAts, midHits, bottoms, tops, directions, volumePasses,
+                     srcT, array.get(iArr, i), array.get(cArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), array.get(vArr, i),
+                     maxRecords, bufT, bufH, bufL)
+                if added
+                    addedCount += 1
+                    if drawRaw and na(array.get(touchedAts, array.size(touchedAts) - 1))
+                        f_rawBox(rawStore, rTops, rBottoms, rChecks, rTfs, rSrcs, srcT, array.get(cArr, i), array.get(bArr, i), array.get(pArr, i), array.get(dArr, i), array.get(vArr, i), tfText, lineStyle)
+    addedCount
+
+// Apply this chart candle's new 5m candles to records that are still untouched.
+f_updateRecords(array<int> checkFroms, array<int> touchedAts, array<int> midHits, array<int> directions, array<float> bottoms, array<float> tops,
+                array<int> cT, array<float> cH, array<float> cL) =>
+    if array.size(checkFroms) > 0 and array.size(cT) > 0
+        for i = 0 to array.size(checkFroms) - 1
+            if na(array.get(touchedAts, i))
+                array.set(touchedAts, i, f_firstTouch(cT, cH, cL, array.get(checkFroms, i), array.get(bottoms, i), array.get(tops, i)))
+            if na(array.get(midHits, i))
+                array.set(midHits, i, f_midTouch(cT, cH, cL, array.get(checkFroms, i), array.get(bottoms, i), array.get(tops, i), array.get(directions, i)))
+
+// End of a record's validity window: first touch or expiry, whichever is first.
+f_windowEnd(array<int> touchedAts, array<int> impulseTimes, int tfSeconds, int index) =>
+    int expiry = array.get(impulseTimes, index) + maxAgeBars * tfSeconds * 1000
+    int hitAt = array.get(touchedAts, index)
+    na(hitAt) ? expiry : math.min(hitAt, expiry)
+
+// Not expired, and price never reached the block's middle. Used to build zones: the
+// block itself may already be touched, as long as all the zone's blocks were
+// untouched at one common moment (checked with the validity windows).
+f_buildable(array<int> impulseTimes, array<int> midHits, int tfSeconds, int index) =>
+    na(array.get(midHits, index)) and time <= array.get(impulseTimes, index) + maxAgeBars * tfSeconds * 1000
+
+// Untouched and not expired right now.
+f_aliveNow(array<int> touchedAts, array<int> impulseTimes, int tfSeconds, int index) =>
+    na(array.get(touchedAts, index)) and time <= array.get(impulseTimes, index) + maxAgeBars * tfSeconds * 1000
+
+// Candle time as HH:mm in the chosen time zone.
+f_hm(int t) =>
+    na(t) ? "-" : str.format_time(t, "HH:mm", infoTz)
+
+f_near(float lowA, float highA, float lowB, float highB, float tolerance) =>
+    bool valid = not na(lowA) and not na(highA) and not na(lowB) and not na(highB) and not na(tolerance)
+    float gap = valid ? math.max(0.0, math.max(lowA, lowB) - math.min(highA, highB)) : na
+    valid and gap <= tolerance
+
+f_hasId(array<string> ids, string id) =>
+    bool found = false
+    if array.size(ids) > 0
+        for i = 0 to array.size(ids) - 1
+            if array.get(ids, i) == id
+                found := true
+    found
+
+f_indexOf(array<string> ids, string id) =>
+    int idx = -1
+    if array.size(ids) > 0
+        for i = 0 to array.size(ids) - 1
+            if idx == -1 and array.get(ids, i) == id
+                idx := i
+    idx
+
+// -----------------------------------------------------------------------------
+// Debug: explain one candle. Runs in the chosen timeframe. When the candle that
+// contains `explainTime` is j candles back (2..searchLen+1), bar [1] is a
+// possible impulse for it; every rule is reported with its value.
+// -----------------------------------------------------------------------------
+f_explain() =>
+    bool inTokyo = useTokyo and not na(time(timeframe.period, tokyoSession, "Asia/Tokyo"))
+    bool inLondon = useLondon and not na(time(timeframe.period, londonSession, "Europe/London"))
+    bool inNewYork = useNewYork and not na(time(timeframe.period, newYorkSession, "America/New_York"))
+    bool inAllowedSession = inTokyo or inLondon or inNewYork
+    float atrNow = ta.atr(atrLen)
+    float avgVol = ta.sma(volume, volLen)
+    float structHigh = ta.highest(high, structureLen)
+    float structLow = ta.lowest(low, structureLen)
+    string line = ""
+    if explainOn
+        for j = 2 to searchLen + 1
+            if time[j] <= explainTime and explainTime < time_close[j]
+                bool moveM = impulseMode == "Move (several candles)"
+                // Direction from the block candle in Move mode, from bar [1] in Single mode.
+                bool bull = moveM ? close[j] < open[j] : close[1] > open[1]
+                string ok = " ✓"
+                string bad = " ✗"
+                bool oppositeOK = bull ? close[j] < open[j] : close[j] > open[j]
+                float body1 = math.abs(close[1] - open[1])
+                float bAtr = body1 / atrNow[1]
+                float bRng = body1 / math.max(high[1] - low[1], syminfo.mintick)
+                float lvl = moveM or bosMode == "Block candle" ? (bull ? high[j] : low[j]) : (bull ? structHigh[2] : structLow[2])
+                bool bos = bull ? close[1] > lvl : close[1] < lvl
+                bool fvg = bull ? low > high[2] : high < low[2]
+                // Move mode: close beyond the block, size of the whole move, FVG anywhere in it.
+                float leg = bull ? close[1] - close[j] : close[j] - close[1]
+                float legAtr = leg / atrNow[1]
+                bool fvgLeg = false
+                for k = j - 1 to 1
+                    if bull ? low[k - 1] > high[k + 1] : high[k - 1] < low[k + 1]
+                        fvgLeg := true
+                int src = na
+                for i = 2 to searchLen + 1
+                    bool opp = bull ? close[i] < open[i] : close[i] > open[i]
+                    if na(src) and opp and (not restrictToSessions or inAllowedSession[i])
+                        src := i
+                bool lastOpp = not na(src) and src == j
+                bool sesOK = not restrictToSessions or inAllowedSession[j]
+                float b = math.min(open[j], close[j])
+                float t = math.max(open[j], close[j])
+                bool leftB = false
+                bool ret = false
+                for k = j - 1 to 0
+                    if leftB and high[k] >= b and low[k] <= t
+                        ret := true
+                    if bull ? close[k] > t : close[k] < b
+                        leftB := true
+                float peak = 0.0
+                for k = j + volumeWindow to math.max(j - volumeWindow, 0)
+                    peak := math.max(peak, nz(volume[k]))
+                float base = avgVol[j + volumeWindow + 1]
+                string rules = moveM ?
+                     "\nclose beyond block " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (bos ? ok : bad) +
+                     "\nmove/ATR " + str.tostring(legAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (legAtr >= impulseATR ? ok : bad) +
+                     "\nFVG in the move" + (fvgLeg or not requireFVG ? ok : bad) :
+                     "\nbody/ATR " + str.tostring(bAtr, "#.##") + " (" + str.tostring(impulseATR) + ")" + (bAtr >= impulseATR ? ok : bad) +
+                     "\nbody/range " + str.tostring(bRng, "#.##") + " (" + str.tostring(minBodyPct) + ")" + (bRng >= minBodyPct ? ok : bad) +
+                     "\nbreak " + str.tostring(close[1], format.mintick) + (bull ? " > " : " < ") + str.tostring(lvl, format.mintick) + (bos ? ok : bad) +
+                     "\nFVG" + (fvg or not requireFVG ? ok : bad)
+                line := (moveM ? "break candle " : "impulse ") + f_hm(time[1]) + (bull ? " ▲" : " ▼") + rules +
+                     "\nblock colour" + (oppositeOK ? ok : bad) +
+                     "\nlast opposite candle" + (lastOpp ? ok : bad + (na(src) ? "" : " (" + f_hm(time[src]) + ")")) +
+                     "\nsession" + (sesOK ? ok : bad) +
+                     "\nnot re-entered" + (ret ? bad : ok) +
+                     "\nvol x" + (base > 0 ? str.tostring(peak / base, "#.#") : "-")
+    [time[1], line]
+
+// -----------------------------------------------------------------------------
+// Fetch 30m / 15m / 10m / 5m OB events on ANY chart timeframe.
+// TF >= chart TF -> request.security (confirmed bar, no repaint)
+// TF <  chart TF -> request.security_lower_tf (every intrabar)
+// -----------------------------------------------------------------------------
+int chartSec = timeframe.in_seconds()
+bool htf30 = chartSec <= 1800
+bool htf15 = chartSec <= 900
+bool htf10 = chartSec <= 600
+bool htf5 = chartSec <= 300
+
+[h30t, h30i, h30c, h30b, h30p, h30d, h30v] = request.security(syminfo.tickerid, "30", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[h15t, h15i, h15c, h15b, h15p, h15d, h15v] = request.security(syminfo.tickerid, "15", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[h10t, h10i, h10c, h10b, h10p, h10d, h10v] = request.security(syminfo.tickerid, "10", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[h5t, h5i, h5c, h5b, h5p, h5d, h5v] = request.security(syminfo.tickerid, "5", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+
+[l30t, l30i, l30c, l30b, l30p, l30d, l30v] = request.security_lower_tf(syminfo.tickerid, "30", f_scanOB(), ignore_invalid_timeframe=true)
+[l15t, l15i, l15c, l15b, l15p, l15d, l15v] = request.security_lower_tf(syminfo.tickerid, "15", f_scanOB(), ignore_invalid_timeframe=true)
+[l10t, l10i, l10c, l10b, l10p, l10d, l10v] = request.security_lower_tf(syminfo.tickerid, "10", f_scanOB(), ignore_invalid_timeframe=true)
+[l5t, l5i, l5c, l5b, l5p, l5d, l5v] = request.security_lower_tf(syminfo.tickerid, "5", f_scanOB(), ignore_invalid_timeframe=true)
+
+// 1m blocks, used only for entries.
+bool htf1 = chartSec <= 60
+[h1t, h1i, h1c, h1b, h1p, h1d, h1v] = request.security(syminfo.tickerid, "1", f_scanConfirmed(), lookahead=barmerge.lookahead_on)
+[l1t, l1i, l1c, l1b, l1p, l1d, l1v] = request.security_lower_tf(syminfo.tickerid, "1", f_scanOB(), ignore_invalid_timeframe=true)
+
+// 30m ATR on every chart timeframe, so the confluence tolerance never changes.
+float atr30 = request.security(syminfo.tickerid, "30", ta.atr(14)[1], lookahead=barmerge.lookahead_on)
+float allowedGap = atr30 * nearATR
+
+// -----------------------------------------------------------------------------
+// 5m candles used for touch tracking, identical on every chart timeframe:
+//   chart > 5m : every 5m candle inside the chart candle
+//   chart = 5m : the chart candle itself
+//   chart < 5m : the last confirmed 5m candle, once
+// -----------------------------------------------------------------------------
+[c5t, c5h, c5l] = request.security_lower_tf(syminfo.tickerid, "5", [time, high, low], ignore_invalid_timeframe=true)
+[p5t, p5h, p5l] = request.security(syminfo.tickerid, "5", [time[1], high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+var int lastCandleTime = na
+var int knownUntil = na
+array<int> curT = array.new<int>()
+array<float> curH = array.new<float>()
+array<float> curL = array.new<float>()
+if chartSec > 300
+    if array.size(c5t) > 0
+        for i = 0 to array.size(c5t) - 1
+            array.push(curT, array.get(c5t, i))
+            array.push(curH, array.get(c5h, i))
+            array.push(curL, array.get(c5l, i))
+else if chartSec == 300
+    array.push(curT, time)
+    array.push(curH, high)
+    array.push(curL, low)
+else if not na(p5t) and (na(lastCandleTime) or p5t > lastCandleTime)
+    array.push(curT, p5t)
+    array.push(curH, p5h)
+    array.push(curL, p5l)
+if array.size(curT) > 0
+    lastCandleTime := array.get(curT, array.size(curT) - 1)
+    knownUntil := lastCandleTime + 300 * 1000
+
+// -----------------------------------------------------------------------------
+// Records
+// -----------------------------------------------------------------------------
+var array<int> times30 = array.new<int>()
+var array<int> impulses30 = array.new<int>()
+var array<int> checks30 = array.new<int>()
+var array<int> hits30 = array.new<int>()
+var array<int> mid30 = array.new<int>()
+var array<float> bottoms30 = array.new<float>()
+var array<float> tops30 = array.new<float>()
+var array<int> directions30 = array.new<int>()
+var array<float> volumes30 = array.new<float>()
+
+var array<int> times15 = array.new<int>()
+var array<int> impulses15 = array.new<int>()
+var array<int> checks15 = array.new<int>()
+var array<int> hits15 = array.new<int>()
+var array<int> mid15 = array.new<int>()
+var array<float> bottoms15 = array.new<float>()
+var array<float> tops15 = array.new<float>()
+var array<int> directions15 = array.new<int>()
+var array<float> volumes15 = array.new<float>()
+
+var array<int> times10 = array.new<int>()
+var array<int> impulses10 = array.new<int>()
+var array<int> checks10 = array.new<int>()
+var array<int> hits10 = array.new<int>()
+var array<int> mid10 = array.new<int>()
+var array<float> bottoms10 = array.new<float>()
+var array<float> tops10 = array.new<float>()
+var array<int> directions10 = array.new<int>()
+var array<float> volumes10 = array.new<float>()
+
+var array<int> times5 = array.new<int>()
+var array<int> impulses5 = array.new<int>()
+var array<int> checks5 = array.new<int>()
+var array<int> hits5 = array.new<int>()
+var array<int> mid5 = array.new<int>()
+var array<float> bottoms5 = array.new<float>()
+var array<float> tops5 = array.new<float>()
+var array<int> directions5 = array.new<int>()
+var array<float> volumes5 = array.new<float>()
+
+var array<int> times1 = array.new<int>()
+var array<int> impulses1 = array.new<int>()
+var array<int> checks1 = array.new<int>()
+var array<int> hits1 = array.new<int>()
+var array<int> mid1 = array.new<int>()
+var array<float> bottoms1 = array.new<float>()
+var array<float> tops1 = array.new<float>()
+var array<int> directions1 = array.new<int>()
+var array<float> volumes1 = array.new<float>()
+
+var array<box> rawBoxes = array.new<box>()
+var array<float> rawTops = array.new<float>()
+var array<float> rawBottoms = array.new<float>()
+var array<int> rawChecks = array.new<int>()
+var array<string> rawTfs = array.new<string>()
+var array<int> rawSrcs = array.new<int>()
+
+// Recent 5m candles (about 3 hours), for back-checking records that arrive late.
+var array<int> bufT = array.new<int>()
+var array<float> bufH = array.new<float>()
+var array<float> bufL = array.new<float>()
+
+// 1) New candles -> records already stored.
+f_updateRecords(checks30, hits30, mid30, directions30, bottoms30, tops30, curT, curH, curL)
+f_updateRecords(checks15, hits15, mid15, directions15, bottoms15, tops15, curT, curH, curL)
+f_updateRecords(checks10, hits10, mid10, directions10, bottoms10, tops10, curT, curH, curL)
+f_updateRecords(checks5, hits5, mid5, directions5, bottoms5, tops5, curT, curH, curL)
+f_updateRecords(checks1, hits1, mid1, directions1, bottoms1, tops1, curT, curH, curL)
+
+// 2) Add the new candles to the buffer.
+if array.size(curT) > 0
+    for i = 0 to array.size(curT) - 1
+        array.push(bufT, array.get(curT, i))
+        array.push(bufH, array.get(curH, i))
+        array.push(bufL, array.get(curL, i))
+while array.size(bufT) > 36
+    array.shift(bufT)
+    array.shift(bufH)
+    array.shift(bufL)
+
+// 3) New records, back-checked against the buffer.
+if htf30
+    f_ingest(times30, impulses30, checks30, hits30, mid30, bottoms30, tops30, directions30, volumes30,
+         array.from(h30t), array.from(h30i), array.from(h30c), array.from(h30b), array.from(h30p), array.from(h30d), array.from(h30v),
+         maxRecordsPerTF, bufT, bufH, bufL, showRaw30, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "30m", line.style_dashed)
+else
+    f_ingest(times30, impulses30, checks30, hits30, mid30, bottoms30, tops30, directions30, volumes30,
+         l30t, l30i, l30c, l30b, l30p, l30d, l30v, maxRecordsPerTF, bufT, bufH, bufL, showRaw30, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "30m", line.style_dashed)
+
+if htf15
+    f_ingest(times15, impulses15, checks15, hits15, mid15, bottoms15, tops15, directions15, volumes15,
+         array.from(h15t), array.from(h15i), array.from(h15c), array.from(h15b), array.from(h15p), array.from(h15d), array.from(h15v),
+         maxRecordsPerTF, bufT, bufH, bufL, showRaw15, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "15m", line.style_dotted)
+else
+    f_ingest(times15, impulses15, checks15, hits15, mid15, bottoms15, tops15, directions15, volumes15,
+         l15t, l15i, l15c, l15b, l15p, l15d, l15v, maxRecordsPerTF, bufT, bufH, bufL, showRaw15, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "15m", line.style_dotted)
+
+if htf10
+    f_ingest(times10, impulses10, checks10, hits10, mid10, bottoms10, tops10, directions10, volumes10,
+         array.from(h10t), array.from(h10i), array.from(h10c), array.from(h10b), array.from(h10p), array.from(h10d), array.from(h10v),
+         maxRecordsPerTF, bufT, bufH, bufL, showRaw10, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "10m", line.style_dotted)
+else
+    f_ingest(times10, impulses10, checks10, hits10, mid10, bottoms10, tops10, directions10, volumes10,
+         l10t, l10i, l10c, l10b, l10p, l10d, l10v, maxRecordsPerTF, bufT, bufH, bufL, showRaw10, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "10m", line.style_dotted)
+
+if htf5
+    f_ingest(times5, impulses5, checks5, hits5, mid5, bottoms5, tops5, directions5, volumes5,
+         array.from(h5t), array.from(h5i), array.from(h5c), array.from(h5b), array.from(h5p), array.from(h5d), array.from(h5v),
+         maxRecordsPerTF, bufT, bufH, bufL, showRaw5, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "5m", line.style_dotted)
+else
+    f_ingest(times5, impulses5, checks5, hits5, mid5, bottoms5, tops5, directions5, volumes5,
+         l5t, l5i, l5c, l5b, l5p, l5d, l5v, maxRecordsPerTF, bufT, bufH, bufL, showRaw5, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "5m", line.style_dotted)
+
+int added1 = 0
+var int first1Seen = na
+if htf1
+    added1 := f_ingest(times1, impulses1, checks1, hits1, mid1, bottoms1, tops1, directions1, volumes1,
+         array.from(h1t), array.from(h1i), array.from(h1c), array.from(h1b), array.from(h1p), array.from(h1d), array.from(h1v),
+         300, bufT, bufH, bufL, false, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "1m", line.style_dotted)
+else
+    added1 := f_ingest(times1, impulses1, checks1, hits1, mid1, bottoms1, tops1, directions1, volumes1,
+         l1t, l1i, l1c, l1b, l1p, l1d, l1v, 300, bufT, bufH, bufL, false, rawBoxes, rawTops, rawBottoms, rawChecks, rawTfs, rawSrcs, "1m", line.style_dotted)
+if na(first1Seen) and array.size(times1) > 0
+    first1Seen := array.get(times1, 0)
+
+// Debug boxes disappear on their first touch, like the zones.
+if array.size(rawBoxes) > 0
+    for r = array.size(rawBoxes) - 1 to 0
+        if not na(f_firstTouch(curT, curH, curL, array.get(rawChecks, r), array.get(rawBottoms, r), array.get(rawTops, r)))
+            box.delete(array.get(rawBoxes, r))
+            array.remove(rawBoxes, r)
+            array.remove(rawTops, r)
+            array.remove(rawBottoms, r)
+            array.remove(rawChecks, r)
+            array.remove(rawTfs, r)
+            array.remove(rawSrcs, r)
+
+// -----------------------------------------------------------------------------
+// Zones
+// Primary: an untouched 30m OB with a 15m OB and a 5m OB from the same move
+// (see f_partner); one box per 30m OB. With a 10m OB from the same move as well,
+// the zone is SUPER STRONG. Volume changes opacity.
+// Fallback: an untouched 15m OB with no such 30m zone over it, 15m volume OK, and
+// a 10m AND a 5m OB from the same move.
+// -----------------------------------------------------------------------------
+var array<box> zoneBoxes = array.new<box>()
+var array<string> zoneKeys = array.new<string>()
+var array<float> zoneTops = array.new<float>()
+var array<float> zoneBottoms = array.new<float>()
+var array<int> zoneCheckFroms = array.new<int>()
+var array<int> zoneGrade = array.new<int>()
+var array<string> drawnIds = array.new<string>()
+var array<int> zoneDirs = array.new<int>()
+var array<int> zoneLefts = array.new<int>()
+var array<int> zoneCreated = array.new<int>()
+var array<box> zoneEntryBoxes = array.new<box>()
+var array<float> zoneEntryTops = array.new<float>()
+var array<float> zoneEntryBottoms = array.new<float>()
+var array<int> zoneEntryChecks = array.new<int>()
+var array<int> zoneEntrySrcs = array.new<int>()
+var array<int> zoneEntryTfs = array.new<int>()
+var array<bool> zoneEntryHit = array.new<bool>()
+var array<label> zoneLabels = array.new<label>()
+var array<int> zoneMainHits = array.new<int>()
+var array<string> zoneTexts = array.new<string>()
+var array<string> zoneInfos = array.new<string>()
+
+// One small label per zone, in the empty space right of the last candle:
+// "<blocks> <volume>  E <entry price>" (+ source times when debug info is on).
+f_refreshLabel(int z) =>
+    label lb = array.get(zoneLabels, z)
+    if not na(lb)
+        string txt = array.get(zoneTexts, z)
+        if not na(array.get(zoneEntryTops, z))
+            float ep = array.get(zoneDirs, z) == 1 ? array.get(zoneEntryTops, z) : array.get(zoneEntryBottoms, z)
+            txt := txt + (array.get(zoneEntryTfs, z) == 5 ? "   E5 " : "   E ") + str.tostring(ep, format.mintick) + (array.get(zoneEntryHit, z) ? " ✓" : "")
+        label.set_text(lb, txt + array.get(zoneInfos, z))
+
+// Bookkeeping for a zone that was just pushed (label + entry slots).
+f_pushZoneMeta(int dir, int left, string txt, string info, int mainHit) =>
+    int last = array.size(zoneTops) - 1
+    float mid = (array.get(zoneTops, last) + array.get(zoneBottoms, last)) / 2
+    label lb = labelMode == "Off" ? label(na) : label.new(bar_index + 2, mid, txt + info, xloc=xloc.bar_index, style=label.style_label_left,
+         color=color.new(color.white, 100), textcolor=zoneTextColor, size=zoneTextSize, textalign=text.align_left)
+    array.push(zoneLabels, lb)
+    array.push(zoneTexts, txt)
+    array.push(zoneInfos, info)
+    array.push(zoneDirs, dir)
+    array.push(zoneMainHits, mainHit)
+    array.push(zoneLefts, left)
+    array.push(zoneCreated, time)
+    array.push(zoneEntryBoxes, box(na))
+    array.push(zoneEntryTops, na)
+    array.push(zoneEntryBottoms, na)
+    array.push(zoneEntryChecks, na)
+    array.push(zoneEntrySrcs, na)
+    array.push(zoneEntryTfs, na)
+    array.push(zoneEntryHit, false)
+
+// Best untouched 1m block for zone z among 1m records [fromIdx .. last]:
+// same direction, formed at or after the zone's source candle, within the entry
+// distance of the zone.
+//   Extreme: the highest block for a sell zone, the lowest for a buy zone.
+//   Closest: the nearest block; on a tie, the one price reaches first.
+// Returns the index of a block (1m, or 5m as fallback) that is better than the
+// zone's current entry (or than nothing, when it has none), or na.
+f_findEntry(array<int> eTimes, array<int> eDirs, array<int> eHits, array<float> eBots, array<float> eTops, int z, int fromIdx) =>
+    int best = na
+    float zTop = array.get(zoneTops, z)
+    float zBot = array.get(zoneBottoms, z)
+    int zDir = array.get(zoneDirs, z)
+    int zLeft = array.get(zoneLefts, z)
+    // The entry block must belong to the move that built the zone: its source candle
+    // lies between the zone's source candle and the confirmation of the zone's
+    // main block. Blocks from later, unrelated moves are never used.
+    int zConfirm = array.get(zoneCheckFroms, z)
+    // Start from the current entry, so only a better block replaces it.
+    float bestT = array.get(zoneEntryTops, z)
+    float bestB = array.get(zoneEntryBottoms, z)
+    float bestGap = na(bestT) ? na : math.max(0.0, math.max(bestB, zBot) - math.min(bestT, zTop))
+    float maxGap = atr30 * entryATR
+    int startIdx = math.max(fromIdx, 0)
+    if array.size(eTimes) > startIdx and not na(maxGap)
+        for i = startIdx to array.size(eTimes) - 1
+            // Untouched at the moment the zone was confirmed (not "now"), so every chart
+            // timeframe picks the same block whenever it happens to build the zone.
+            int hitE = array.get(eHits, i)
+            if array.get(eDirs, i) == zDir and (na(hitE) or hitE > zConfirm) and array.get(eTimes, i) >= zLeft and array.get(eTimes, i) <= zConfirm
+                float b1 = array.get(eBots, i)
+                float t1 = array.get(eTops, i)
+                float gap = math.max(0.0, math.max(b1, zBot) - math.min(t1, zTop))
+                if gap <= maxGap
+                    bool better = na(bestT) ? true :
+                         entryPick == "Extreme" ? (zDir == 1 ? b1 < bestB : t1 > bestT) :
+                         gap < bestGap or (gap == bestGap and (zDir == 1 ? t1 > bestT : b1 < bestB))
+                    if better
+                        best := i
+                        bestT := t1
+                        bestB := b1
+                        bestGap := gap
+    best
+
+f_setEntry(array<int> eTimes, array<int> eChecks, array<float> eBots, array<float> eTops, int z, int i, int tfMin) =>
+    float t1 = array.get(eTops, i)
+    float b1 = array.get(eBots, i)
+    color ec = entryColor
+    box old = array.get(zoneEntryBoxes, z)
+    if not na(old)
+        box.delete(old)
+    box eb = box.new(left=array.get(eTimes, i), top=t1, right=time, bottom=b1, xloc=xloc.bar_time, extend=extend.right,
+         bgcolor=color.new(ec, entryOpacity), border_color=color.new(ec, 0), border_width=2)
+    array.set(zoneEntryBoxes, z, eb)
+    array.set(zoneEntryTops, z, t1)
+    array.set(zoneEntryBottoms, z, b1)
+    array.set(zoneEntryChecks, z, array.get(eChecks, i))
+    array.set(zoneEntrySrcs, z, array.get(eTimes, i))
+    array.set(zoneEntryTfs, z, tfMin)
+    f_refreshLabel(z)
+
+var array<box> ghostBoxes = array.new<box>()
+
+// Remove zone z. With "Show removed zones" on, a grey ghost box stays behind with
+// the zone's label and the reason it was removed.
+f_removeZone(int z, string why) =>
+    strategy.cancel("Z" + array.get(zoneKeys, z))
+    if showRemoved and why != ""
+        label lb0 = array.get(zoneLabels, z)
+        string lbl = na(lb0) ? array.get(zoneTexts, z) : label.get_text(lb0)
+        box g = box.new(left=array.get(zoneLefts, z), top=array.get(zoneTops, z), right=time, bottom=array.get(zoneBottoms, z), xloc=xloc.bar_time,
+             bgcolor=color.new(color.gray, 90), border_color=color.new(color.gray, 40), border_width=1, border_style=line.style_dotted,
+             text=PAD + lbl + "\nremoved " + str.format_time(time, "dd/MM HH:mm", infoTz) + ": " + why,
+             text_color=zoneTextColor, text_size=size.small, text_halign=text.align_left, text_valign=text.align_top)
+        array.push(ghostBoxes, g)
+        while array.size(ghostBoxes) > 40
+            box.delete(array.shift(ghostBoxes))
+    box.delete(array.get(zoneBoxes, z))
+    array.remove(zoneBoxes, z)
+    array.remove(zoneKeys, z)
+    array.remove(zoneTops, z)
+    array.remove(zoneBottoms, z)
+    array.remove(zoneCheckFroms, z)
+    array.remove(zoneGrade, z)
+    box eb = array.get(zoneEntryBoxes, z)
+    if not na(eb)
+        box.delete(eb)
+    array.remove(zoneDirs, z)
+    array.remove(zoneMainHits, z)
+    array.remove(zoneLefts, z)
+    array.remove(zoneCreated, z)
+    array.remove(zoneEntryBoxes, z)
+    array.remove(zoneEntryTops, z)
+    array.remove(zoneEntryBottoms, z)
+    array.remove(zoneEntryChecks, z)
+    array.remove(zoneEntrySrcs, z)
+    array.remove(zoneEntryTfs, z)
+    array.remove(zoneEntryHit, z)
+    label lb = array.get(zoneLabels, z)
+    if not na(lb)
+        label.delete(lb)
+    array.remove(zoneLabels, z)
+    array.remove(zoneTexts, z)
+    array.remove(zoneInfos, z)
+
+// Zone used up: its entry was already reached. Remember it so it is never rebuilt.
+f_useUpZone(int z) =>
+    string usedKey = array.get(zoneKeys, z)
+    if not f_hasId(drawnIds, usedKey)
+        array.push(drawnIds, usedKey)
+    f_removeZone(z, "its entry block was already reached when the zone was built")
+
+f_removeZoneByKey(string key) =>
+    int idx = f_indexOf(zoneKeys, key)
+    if idx >= 0
+        f_removeZone(idx, "replaced by a 30m zone over the same 15m block")
+
+// First touch of a 1m entry: fire the alert and remove everything (zone + entry).
+// A touch of the zone itself does the same just below.
+int newEntryHit = 0
+if array.size(zoneBoxes) > 0
+    for z = array.size(zoneBoxes) - 1 to 0
+        box eb = array.get(zoneEntryBoxes, z)
+        if not na(eb) and not array.get(zoneEntryHit, z)
+            if not na(f_firstTouch(curT, curH, curL, array.get(zoneEntryChecks, z), array.get(zoneEntryBottoms, z), array.get(zoneEntryTops, z)))
+                newEntryHit += 1
+                // Remember the zone so it is never rebuilt (its own block may still be untouched).
+                string usedKey = array.get(zoneKeys, z)
+                if not f_hasId(drawnIds, usedKey)
+                    array.push(drawnIds, usedKey)
+                f_removeZone(z, "entry block reached")
+
+// A zone WITH an entry stays until its entry block is touched (handled above), or
+// until price crosses at least half of the zone (reaches its middle).
+// A zone without an entry disappears on its first touch.
+if array.size(zoneBoxes) > 0
+    for z = array.size(zoneBoxes) - 1 to 0
+        float zTop = array.get(zoneTops, z)
+        float zBot = array.get(zoneBottoms, z)
+        int zFrom = array.get(zoneCheckFroms, z)
+        if na(array.get(zoneEntryBoxes, z))
+            if not na(f_firstTouch(curT, curH, curL, zFrom, zBot, zTop))
+                f_removeZone(z, "touched (no entry)")
+        else
+            // Buy zone: a low at or below the middle. Sell zone: a high at or above it.
+            float mid = (zTop + zBot) / 2
+            bool buyZone = array.get(zoneDirs, z) == 1
+            if not na(f_firstTouch(curT, curH, curL, zFrom, buyZone ? zBot - 1e9 : mid, buyZone ? mid : zTop + 1e9))
+                f_removeZone(z, "price crossed half of the zone")
+
+int newPrimary = 0
+int newFallback = 0
+int newSuper = 0
+// 15m blocks that currently pair with an untouched 30m block (the 30m zone wins).
+array<bool> has30Now = array.new<bool>(array.size(times15), false)
+
+// Confluence rule: a smaller-timeframe block confirms a bigger one when
+//   1. it belongs to the SAME MOVE: same direction, close in price, and its source
+//      candle lies between "moveLookback" big candles before the big block candle
+//      and the moment the big block was confirmed, and
+//   2. all blocks of the zone were untouched at one common moment (each block is
+//      valid from its confirmation until its first touch).
+// f_partner: first block of that timeframe meeting rule 1 (rule 2 not checked).
+f_partner(array<int> pTimes, array<int> pDirs, array<float> pBots, array<float> pTops, int dir, float lo, float hi, int fromT, int toT) =>
+    int found = na
+    if array.size(pTimes) > 0
+        for i = array.size(pTimes) - 1 to 0
+            int pt = array.get(pTimes, i)
+            if pt >= fromT and pt <= toT and array.get(pDirs, i) == dir and f_near(lo, hi, array.get(pBots, i), array.get(pTops, i), allowedGap)
+                found := i
+                break
+    found
+
+// f_partnerW: same as f_partner, and the block was untouched at some moment
+// inside [ws, we). Returns the index, or na.
+f_partnerW(array<int> pTimes, array<int> pDirs, array<float> pBots, array<float> pTops, array<int> pChecks, array<int> pHits, array<int> pImps, int tfSec,
+           int dir, float lo, float hi, int fromT, int toT, int ws, int we) =>
+    int found = na
+    if array.size(pTimes) > 0 and ws < we
+        for i = array.size(pTimes) - 1 to 0
+            int pt = array.get(pTimes, i)
+            if pt >= fromT and pt <= toT and array.get(pDirs, i) == dir and f_near(lo, hi, array.get(pBots, i), array.get(pTops, i), allowedGap)
+                if math.max(ws, array.get(pChecks, i)) < math.min(we, f_windowEnd(pHits, pImps, tfSec, i))
+                    found := i
+                    break
+    found
+
+// Primary 30m + 15m + 5m; SUPER STRONG when a 10m block is valid at the same moment too.
+if not na(knownUntil) and array.size(times30) > 0 and array.size(times15) > 0 and array.size(times5) > 0
+    for k = 0 to array.size(times30) - 1
+        if f_buildable(impulses30, mid30, 1800, k)
+            int dir30 = array.get(directions30, k)
+            float low30 = array.get(bottoms30, k)
+            float high30 = array.get(tops30, k)
+            int start30 = array.get(checks30, k)
+            int end30 = math.min(f_windowEnd(hits30, impulses30, 1800, k), knownUntil)
+            int src30 = array.get(times30, k)
+            int fromT = src30 - moveLookback * 1800 * 1000
+            string zoneId = "P|" + str.tostring(src30)
+            color base = dir30 == 1 ? color.teal : color.red
+            for j = 0 to array.size(times15) - 1
+                int t15 = array.get(times15, j)
+                if t15 >= fromT and t15 <= start30 and array.get(directions15, j) == dir30 and f_near(low30, high30, array.get(bottoms15, j), array.get(tops15, j), allowedGap)
+                    int s1 = math.max(start30, array.get(checks15, j))
+                    int e1 = math.min(end30, f_windowEnd(hits15, impulses15, 900, j))
+                    int m5 = f_partnerW(times5, directions5, bottoms5, tops5, checks5, hits5, impulses5, 300, dir30, low30, high30, fromT, start30, s1, e1)
+                    if not na(m5)
+                        // A 10m block AND a 5m block valid at the same moment -> SUPER STRONG.
+                        int m10 = na
+                        int sup5 = na
+                        if array.size(times10) > 0
+                            for a = array.size(times10) - 1 to 0
+                                int t10 = array.get(times10, a)
+                                if t10 >= fromT and t10 <= start30 and array.get(directions10, a) == dir30 and f_near(low30, high30, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
+                                    int s3 = math.max(s1, array.get(checks10, a))
+                                    int e3 = math.min(e1, f_windowEnd(hits10, impulses10, 600, a))
+                                    int b5 = f_partnerW(times5, directions5, bottoms5, tops5, checks5, hits5, impulses5, 300, dir30, low30, high30, fromT, start30, s3, e3)
+                                    if not na(b5)
+                                        m10 := a
+                                        sup5 := b5
+                                        break
+                        bool isSuper = not na(m10)
+                        int use5 = isSuper ? sup5 : m5
+                        // Volume grade = the weaker of the 30m and 15m volumes.
+                        float pairRatio = math.min(nz(array.get(volumes30, k)), nz(array.get(volumes15, j)))
+                        int pairGrade = math.min(f_grade(array.get(volumes30, k)), f_grade(array.get(volumes15, j)))
+                        int score = (isSuper ? 10 : 0) + pairGrade
+                        string info = showZoneInfo ? "\n30m " + f_hm(src30) + " · 15m " + f_hm(t15) + (isSuper ? " · 10m " + f_hm(array.get(times10, m10)) : "") + " · 5m " + f_hm(array.get(times5, use5)) : ""
+                        string pairText = (isSuper ? "★ 30·15·10·5  " : "30·15·5  ") + f_volShort(pairGrade, pairRatio)
+                        int fillT = isSuper ? superOpacity : f_fillT(pairGrade)
+                        int borderT = isSuper ? 0 : f_borderT(pairGrade)
+                        int borderW = isSuper ? 4 : f_borderW(pairGrade)
+                        // While this 30m zone exists it replaces a 15m+10m+5m zone on a
+                        // 15m block that overlaps it in price.
+                        if math.max(low30, array.get(bottoms15, j)) <= math.min(high30, array.get(tops15, j))
+                            array.set(has30Now, j, true)
+                            f_removeZoneByKey("F|" + str.tostring(t15))
+                        int zIdx = f_indexOf(zoneKeys, zoneId)
+                        if zIdx == -1 and not f_hasId(drawnIds, zoneId)
+                            box newBox = box.new(left=src30, top=high30, right=time, bottom=low30, xloc=xloc.bar_time, extend=extend.right,
+                                 bgcolor=color.new(base, fillT), border_color=color.new(base, borderT), border_width=borderW)
+                            array.push(zoneBoxes, newBox)
+                            array.push(zoneKeys, zoneId)
+                            array.push(zoneTops, high30)
+                            array.push(zoneBottoms, low30)
+                            array.push(zoneCheckFroms, start30)
+                            array.push(zoneGrade, score)
+                            f_pushZoneMeta(dir30, src30, pairText, info, array.get(hits30, k))
+                            array.push(drawnIds, zoneId)
+                            newPrimary += 1
+                            if isSuper
+                                newSuper += 1
+                        else if zIdx >= 0 and score > array.get(zoneGrade, zIdx)
+                            // Upgrade the box (to SUPER STRONG and/or better volume).
+                            box ub = array.get(zoneBoxes, zIdx)
+                            box.set_bgcolor(ub, color.new(base, fillT))
+                            box.set_border_color(ub, color.new(base, borderT))
+                            box.set_border_width(ub, borderW)
+                            array.set(zoneTexts, zIdx, pairText)
+                            array.set(zoneInfos, zIdx, info)
+                            f_refreshLabel(zIdx)
+                            if isSuper and array.get(zoneGrade, zIdx) < 10
+                                newSuper += 1
+                            array.set(zoneGrade, zIdx, score)
+
+// Fallback 15m + 10m + 5m (all three untouched at one common moment, same move).
+if not na(knownUntil) and array.size(times15) > 0 and array.size(times10) > 0 and array.size(times5) > 0
+    for j = 0 to array.size(times15) - 1
+        int t15 = array.get(times15, j)
+        string tripleId = "F|" + str.tostring(t15)
+        if f_buildable(impulses15, mid15, 900, j) and f_grade(array.get(volumes15, j)) >= 1 and not array.get(has30Now, j) and f_indexOf(zoneKeys, tripleId) == -1 and not f_hasId(drawnIds, tripleId)
+            int dir15 = array.get(directions15, j)
+            float low15 = array.get(bottoms15, j)
+            float high15 = array.get(tops15, j)
+            int start15 = array.get(checks15, j)
+            int end15 = math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+            int fromT = t15 - moveLookback * 900 * 1000
+            int match10 = na
+            int match5 = na
+            for a = array.size(times10) - 1 to 0
+                int t10 = array.get(times10, a)
+                if t10 >= fromT and t10 <= start15 and array.get(directions10, a) == dir15 and f_near(low15, high15, array.get(bottoms10, a), array.get(tops10, a), allowedGap)
+                    int s2 = math.max(start15, array.get(checks10, a))
+                    int e2 = math.min(end15, f_windowEnd(hits10, impulses10, 600, a))
+                    int b5 = f_partnerW(times5, directions5, bottoms5, tops5, checks5, hits5, impulses5, 300, dir15, low15, high15, fromT, start15, s2, e2)
+                    if not na(b5)
+                        match10 := a
+                        match5 := b5
+                        break
+            if not na(match10)
+                color base = dir15 == 1 ? color.teal : color.red
+                float r15 = array.get(volumes15, j)
+                int g15 = f_grade(r15)
+                box newBox = box.new(left=t15, top=high15, right=time, bottom=low15, xloc=xloc.bar_time, extend=extend.right,
+                     bgcolor=color.new(base, f_fillT(g15)), border_color=color.new(base, f_borderT(g15)), border_width=f_borderW(g15))
+                array.push(zoneBoxes, newBox)
+                array.push(zoneKeys, tripleId)
+                array.push(zoneTops, high15)
+                array.push(zoneBottoms, low15)
+                array.push(zoneCheckFroms, start15)
+                array.push(zoneGrade, g15)
+                string info15 = showZoneInfo ? "\n15m " + f_hm(t15) + " · 10m " + f_hm(array.get(times10, match10)) + " · 5m " + f_hm(array.get(times5, match5)) : ""
+                f_pushZoneMeta(dir15, t15, "15·10·5  " + f_volShort(g15, r15), info15, array.get(hits15, j))
+                newFallback += 1
+
+// 1m entries (only 1m blocks from the move that built the zone, see f_findEntry).
+// A new zone searches all stored 1m blocks. Until price reaches the
+// entry, every new 1m block is compared with the current entry and replaces it
+// when it is better (more extreme, or closer in "Closest" mode). So the entry is
+// always the best block available, whatever the chart timeframe; once price has
+// reached it, it stays fixed.
+// If the chosen block was already reached after the zone was confirmed (a slower
+// chart builds the zone later), the zone is used up: it is removed like on a
+// faster chart, where it would have been drawn and then removed on that touch.
+// 5m fallback: TradingView only gives a limited history of 1m data inside a
+// chart. When the 1m data on this chart starts after the zone's move, the entry is
+// taken from the 5m blocks of that move instead (same rules), shown as "E5".
+if showEntry and array.size(zoneBoxes) > 0
+    for z = array.size(zoneBoxes) - 1 to 0
+        if not array.get(zoneEntryHit, z)
+            bool isNew = array.get(zoneCreated, z) == time
+            bool no1mData = na(first1Seen) or first1Seen > array.get(zoneLefts, z)
+            if no1mData
+                if isNew
+                    int e5 = f_findEntry(times5, directions5, hits5, bottoms5, tops5, z, 0)
+                    if not na(e5)
+                        if not na(array.get(hits5, e5))
+                            f_useUpZone(z)
+                        else
+                            f_setEntry(times5, checks5, bottoms5, tops5, z, e5, 5)
+            else
+                int fromIdx = isNew ? 0 : array.size(times1) - added1
+                if fromIdx < array.size(times1)
+                    int e = f_findEntry(times1, directions1, hits1, bottoms1, tops1, z, fromIdx)
+                    if not na(e)
+                        if not na(array.get(hits1, e))
+                            f_useUpZone(z)
+                        else
+                            f_setEntry(times1, checks1, bottoms1, tops1, z, e, 1)
+
+// A zone built on this candle whose main block was already touched (a slower chart
+// builds zones later than a faster one) only survives if it has an entry, exactly
+// like on the faster chart, where it was drawn first and then kept by its entry.
+if array.size(zoneBoxes) > 0
+    for z = array.size(zoneBoxes) - 1 to 0
+        if array.get(zoneCreated, z) == time and na(array.get(zoneEntryBoxes, z)) and not na(array.get(zoneMainHits, z))
+            string usedKey = array.get(zoneKeys, z)
+            if not f_hasId(drawnIds, usedKey)
+                array.push(drawnIds, usedKey)
+            f_removeZone(z, "touched (no entry)")
+
+// Trim displayed zones; record arrays are independently capped per timeframe.
+while array.size(zoneBoxes) > maxZones
+    string trimmedKey = array.get(zoneKeys, 0)
+    if not f_hasId(drawnIds, trimmedKey)
+        array.push(drawnIds, trimmedKey)
+    f_removeZone(0, "")
+while array.size(drawnIds) > maxZones * 8
+    array.shift(drawnIds)
+
+// Debug: why the 15m block j is or is not a 15m+10m+5m zone.
+f_why15(int j) =>
+    int src = array.get(times15, j)
+    int dir15 = array.get(directions15, j)
+    float low15 = array.get(bottoms15, j)
+    float high15 = array.get(tops15, j)
+    int start15 = array.get(checks15, j)
+    int fromT = src - moveLookback * 900 * 1000
+    int end15 = na(knownUntil) ? start15 : math.min(f_windowEnd(hits15, impulses15, 900, j), knownUntil)
+    int p10 = f_partner(times10, directions10, bottoms10, tops10, dir15, low15, high15, fromT, start15)
+    int w10 = f_partnerW(times10, directions10, bottoms10, tops10, checks10, hits10, impulses10, 600, dir15, low15, high15, fromT, start15, start15, end15)
+    int p5 = f_partner(times5, directions5, bottoms5, tops5, dir15, low15, high15, fromT, start15)
+    int w5 = f_partnerW(times5, directions5, bottoms5, tops5, checks5, hits5, impulses5, 300, dir15, low15, high15, fromT, start15, start15, end15)
+    string gapTxt = " (max gap " + str.tostring(allowedGap, "#.##") + ")"
+    float rj = array.get(volumes15, j)
+    int gj = f_grade(rj)
+    string v = f_volText(gj, rj)
+    string key = "F|" + str.tostring(src)
+    string facts = " [confirmed " + f_hm(start15) + ", touched " + f_hm(array.get(hits15, j)) + ", middle reached " + f_hm(array.get(mid15, j)) + "]"
+    string why = not f_buildable(impulses15, mid15, 900, j) ? "too old or price crossed its middle" :
+         gj == 0 ? v + " -> no zone (low volume)" :
+         array.get(has30Now, j) ? v + " -> part of a 30m zone" :
+         f_indexOf(zoneKeys, key) >= 0 ? v + " -> zone" :
+         f_hasId(drawnIds, key) ? v + " -> zone was drawn and removed (enable 'Show removed zones')" :
+         na(p10) ? v + " -> no 10m block from the same move close enough" + gapTxt :
+         na(w10) ? v + " -> 10m block (" + f_hm(array.get(times10, p10)) + ") touched before this 15m block was confirmed" :
+         na(p5) ? v + " -> no 5m block from the same move close enough" + gapTxt :
+         na(w5) ? v + " -> 5m block (" + f_hm(array.get(times5, p5)) + ") touched before this 15m block was confirmed" :
+         v + " -> 10m and 5m blocks never untouched at the same time"
+    why + facts
+
+// Debug: on the last bar, say why each untouched 15m block is or is not a zone.
+if barstate.islast and showRaw15 and array.size(rawBoxes) > 0
+    for r = 0 to array.size(rawBoxes) - 1
+        if array.get(rawTfs, r) == "15m"
+            int src = array.get(rawSrcs, r)
+            int j = array.indexof(times15, src)
+            if j >= 0
+                box.set_text(array.get(rawBoxes, r), PAD + "15m " + f_hm(src) + " · " + f_why15(j))
+
+// -----------------------------------------------------------------------------
+// Backtest orders
+// -----------------------------------------------------------------------------
+f_parseDate(string txt) =>
+    array<string> d = str.split(str.trim(txt), "-")
+    array.size(d) == 3 ? timestamp(infoTz, int(str.tonumber(array.get(d, 0))), int(str.tonumber(array.get(d, 1))), int(str.tonumber(array.get(d, 2))), 0, 0) : na
+
+int btFrom = f_parseDate(btFromText)
+int btTo = f_parseDate(btToText)
+bool inTest = not na(btFrom) and not na(btTo) and time >= btFrom and time < btTo
+
+// Entry ids that already became a trade are never traded again.
+// (open trades, and trades that opened and closed within one candle).
+var array<string> usedIds = array.new<string>()
+var int seenClosed = 0
+if strategy.opentrades > 0
+    string openId = strategy.opentrades.entry_id(strategy.opentrades - 1)
+    if not f_hasId(usedIds, openId)
+        array.push(usedIds, openId)
+if strategy.closedtrades > seenClosed
+    for i = seenClosed to strategy.closedtrades - 1
+        string cId = strategy.closedtrades.entry_id(i)
+        if not f_hasId(usedIds, cId)
+            array.push(usedIds, cId)
+    seenClosed := strategy.closedtrades
+
+if array.size(zoneBoxes) > 0
+    for z = 0 to array.size(zoneBoxes) - 1
+        string id = "Z" + array.get(zoneKeys, z)
+        int zDir = array.get(zoneDirs, z)
+        bool created = array.get(zoneCreated, z) >= btFrom and array.get(zoneCreated, z) < btTo
+        bool sideOK = zDir == 1 ? btLong : btShort
+        // Orders wait only while no trade is open (one position at a time).
+        if inTest and created and sideOK and strategy.position_size == 0 and not na(array.get(zoneEntryBoxes, z)) and not f_hasId(usedIds, id)
+            float px = zDir == 1 ? array.get(zoneEntryTops, z) + entryOffsetPips * pipSize : array.get(zoneEntryBottoms, z) - entryOffsetPips * pipSize
+            float sl = zDir == 1 ? px - slPips * pipSize : px + slPips * pipSize
+            float tp = zDir == 1 ? px + tpPips * pipSize : px - tpPips * pipSize
+            strategy.entry(id, zDir == 1 ? strategy.long : strategy.short, limit=px)
+            strategy.exit("X" + array.get(zoneKeys, z), from_entry=id, stop=sl, limit=tp)
+        else
+            strategy.cancel(id)
+
+// Labels: placed right of the last candle at each zone's middle; labels that
+// would overlap are pushed down so every one stays readable.
+if barstate.islast and array.size(zoneLabels) > 0
+    array<float> mids = array.new<float>()
+    for z = 0 to array.size(zoneLabels) - 1
+        array.push(mids, (array.get(zoneTops, z) + array.get(zoneBottoms, z)) / 2)
+    array<int> ord = array.sort_indices(mids, order.descending)
+    float minSpacing = nz(atr30) * (showZoneInfo ? 0.7 : 0.35)
+    float lastY = na
+    for n = 0 to array.size(ord) - 1
+        int z = array.get(ord, n)
+        label lb = array.get(zoneLabels, z)
+        if not na(lb)
+            float y = array.get(mids, z)
+            if not na(lastY) and lastY - y < minSpacing
+                y := lastY - minSpacing
+            label.set_xy(lb, bar_index + 2, y)
+            lastY := y
+            // Debug: which 1m block is the entry, or why there is none.
+            if showZoneInfo
+                string diag = ""
+                if not na(array.get(zoneEntrySrcs, z))
+                    diag := "\n" + str.tostring(array.get(zoneEntryTfs, z)) + "m entry block " + str.format_time(array.get(zoneEntrySrcs, z), "dd/MM HH:mm", infoTz)
+                else
+                    int zDir = array.get(zoneDirs, z)
+                    int zLeft = array.get(zoneLefts, z)
+                    int zConfirm = array.get(zoneCheckFroms, z)
+                    float maxGap = atr30 * entryATR
+                    int nWin = 0
+                    int nTouched = 0
+                    if array.size(times1) > 0
+                        for i = 0 to array.size(times1) - 1
+                            int t1 = array.get(times1, i)
+                            float gap = math.max(0.0, math.max(array.get(bottoms1, i), array.get(zoneBottoms, z)) - math.min(array.get(tops1, i), array.get(zoneTops, z)))
+                            if array.get(directions1, i) == zDir and t1 >= zLeft and t1 <= zConfirm and gap <= maxGap
+                                nWin += 1
+                                int h1 = array.get(hits1, i)
+                                if not na(h1) and h1 <= zConfirm
+                                    nTouched += 1
+                    diag := "\n1m entry: none · 1m blocks in the move " + str.tostring(nWin) + " (touched before confirm " + str.tostring(nTouched) + ")" +
+                         " · move " + str.format_time(zLeft, "dd/MM HH:mm", infoTz) + "-" + str.format_time(zConfirm, "HH:mm", infoTz) +
+                         " · 1m data on this chart starts " + (na(first1Seen) ? "-" : str.format_time(first1Seen, "dd/MM HH:mm", infoTz)) +
+                         (not na(first1Seen) and first1Seen > zLeft ? " (AFTER this move: TradingView gives no older 1m data on this timeframe)" : "")
+                f_refreshLabel(z)
+                label.set_text(lb, label.get_text(lb) + diag)
+
+// Debug table for "explain one candle".
+[exT, exLine] = request.security(syminfo.tickerid, explainTf, f_explain(), lookahead=barmerge.lookahead_on)
+var array<int> exTimes = array.new<int>()
+var array<string> exLines = array.new<string>()
+if explainOn and exLine != "" and array.indexof(exTimes, exT) == -1
+    array.push(exTimes, exT)
+    array.push(exLines, exLine)
+// Marker line on the explained candle, only while the explain tool is on.
+var line exLine1 = na
+if barstate.islast
+    line.delete(exLine1)
+    exLine1 := na
+    if explainOn and not na(explainTime)
+        exLine1 := line.new(explainTime, low, explainTime, high, xloc=xloc.bar_time, extend=extend.both,
+             color=color.new(color.orange, 20), style=line.style_dashed, width=1)
+var table exTable = table.new(position.bottom_left, 8, 3, bgcolor=color.new(color.white, 5), frame_color=color.gray, frame_width=1, border_color=color.silver, border_width=1)
+if barstate.islast and explainOn
+    table.cell(exTable, 0, 0, explainTf + "m block candle " + f_hm(explainTime) + ": each next candle tested as the impulse / break candle (needed value in brackets)",
+         text_color=color.black, text_size=size.small, text_halign=text.align_left)
+    table.merge_cells(exTable, 0, 0, 7, 0)
+    if array.size(exLines) == 0
+        table.cell(exTable, 0, 1, "No data: check the time, and use a chart timeframe\nequal to or lower than " + explainTf + "m.",
+             text_color=color.red, text_size=size.small, text_halign=text.align_left)
+    else
+        for n = 0 to math.min(array.size(exLines), 8) - 1
+            table.cell(exTable, n, 1, array.get(exLines, n), text_color=color.black, text_size=size.small, text_halign=text.align_left, text_valign=text.align_top)
+    // For a 15m candle, also say what happened to it as a zone.
+    if explainTf == "15" and not na(explainTime) and array.size(times15) > 0
+        int jx = na
+        for i = 0 to array.size(times15) - 1
+            int t = array.get(times15, i)
+            if t <= explainTime and explainTime < t + 900 * 1000
+                jx := i
+        string verdict = na(jx) ? "Zone: this candle is not a stored 15m block (not detected, or older than the stored records)." : "Zone: " + f_why15(jx)
+        table.cell(exTable, 0, 2, verdict, text_color=color.black, text_size=size.small, text_halign=text.align_left)
+        table.merge_cells(exTable, 0, 2, 7, 2)
+
+
+// Notes:
+// - Same zones on every chart timeframe; detection uses 30m / 15m / 10m / 5m data
+//   and touches are measured on 5m candles.
+// - On charts below 5m a touch is seen when the 5m candle closes.
+// - On 1D/1W the 5m intrabar history is limited by TradingView, so older zones
+//   may be missing there.
+// - Session filter applies only to the OB source candle, not the impulse candle.
+// - Volume is the chart symbol's volume (OANDA XAUUSD Tick Volume in the user's setup).
